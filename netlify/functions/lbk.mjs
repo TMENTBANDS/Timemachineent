@@ -152,6 +152,10 @@ export default async (req) => {
           else msg = "Tonight's sign-ups are full. Thanks for coming out!";
           return { __error: msg, status: 409, closed: true };
         }
+        // A backup from an earlier set who didn't get called can sign up again for the current set.
+        const isBackup = (e) => d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped").sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
+        for (const old of d.entries.filter((e) => e.device === device && e.status === "waiting" && entrySet(e) < sh.set && isBackup(e)))
+          Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
         const key = songKey(song, artist);
         const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
         if (taken) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
@@ -159,7 +163,7 @@ export default async (req) => {
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
         const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
         d.entries.push(e);
-        return { ok: true, id: e.id };
+        return { ok: true, id: e.id, backup: sh.count >= SINGERS ? sh.count - SINGERS + 1 : 0 };
       });
       if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken, closed: out.closed }, out.status || 400);
       return json(out);

@@ -108,9 +108,14 @@ function placeOf(e){
   return i<0?null:(i<n?{singer:true,spot:i+1}:{singer:false,spot:i-n+1});
 }
 const byOrder=(a,b)=>(a.set-b.set)||(a.pos-b.pos);
+function nextSetLine(set){
+  const nx={1:"Set 2 sign-up opens around 9:30",2:"Set 3 sign-up opens around 11:30"}[set];
+  return nx?`If you don't get to sing in Set ${set}, you'll need to sign up again when the ${nx}.`:`Set 3 is the last set of the night, so if a spot doesn't open up, we'll catch you next Wednesday!`;
+}
 function sheetMsg(sh){
   if(!sh) return "";
-  if(sh.accepting) return `Signing up for <b>Set ${sh.set}</b> (${SET_TIMES[sh.set]}). ${sh.perSet-sh.count} of ${sh.perSet} spots left.`;
+  if(sh.accepting && sh.count>=sh.singers) return `Set ${sh.set}'s 12 singer spots are full. <b>${sh.perSet-sh.count} just-in-case backup spot${sh.perSet-sh.count===1?"":"s"} left.</b> Backups only sing if one of the 12 can't. ${nextSetLine(sh.set)}`;
+  if(sh.accepting) return `Signing up for <b>Set ${sh.set}</b> (${SET_TIMES[sh.set]}). ${sh.singers-sh.count} of ${sh.singers} singer spots left.`;
   if(sh.set===1&&sh.auto&&!sh.open) return "Sign-ups for Set 1 open at <b>8:15 pm</b>.";
   if(sh.next) return `Set ${sh.set} is ${sh.full?"full":"closed"}. The <b>Set ${sh.next}</b> sign-up opens around <b>${sh.nextAt}</b>. Check back on the break!`;
   return "Tonight's sign-ups are full. Thanks for coming out!";
@@ -122,7 +127,8 @@ const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){re
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g,"");
 const LIB = SONGS.map(([a,t],i)=>({i,a,t,k:norm(t+" "+a),ks:norm(t).replace(/^the /,""),ka:norm(a).replace(/^the /,"")}));
 const songKey = (s,a) => norm(s+" "+a).replace(/ /g,"");
-const takenSet = () => new Set(S.entries.filter(e=>e.status!=="skipped").map(e=>songKey(e.song,e.artist)));
+// A backup from an earlier set can pick the same song again for the new set.
+const takenSet = () => new Set(S.entries.filter(e=>e.status!=="skipped" && !(S.mine&&e.id===S.mine.id&&e.status==="waiting"&&S.sheet&&e.set<S.sheet.set&&placeOf(e)&&!placeOf(e).singer)).map(e=>songKey(e.song,e.artist)));
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
 let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
 
@@ -240,10 +246,14 @@ function openSignup(r){
   }
   const el=sheet(`<form id="f"><span class="eyebrow">Sign up to sing</span>
     <div><div class="t" style="font-size:1.3rem">${esc(r.t)}</div><div class="a">${esc(r.a)}</div></div>
+    ${S.sheet&&S.sheet.count>=S.sheet.singers?`<div class="status bad"><span><b>Heads up: this is a just-in-case spot.</b> Set ${S.sheet.set}'s 12 singer spots are full, so you'd be backup #${S.sheet.count-S.sheet.singers+1}. You'll only sing if one of the 12 can't. ${nextSetLine(S.sheet.set)}</span></div>`:""}
     <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
-    <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Get in line</button></div>
+    ${S.sheet&&S.sheet.count>=S.sheet.singers
+      ? `<div style="display:flex;flex-direction:column;gap:10px"><button class="btn" id="go">Take a just-in-case spot</button>${S.sheet.next?`<button type="button" class="btn ghost" id="wait">I'll wait for Set ${S.sheet.next} sign-up</button>`:""}<button type="button" class="linkbtn" id="cx">Pick a different song</button></div>`
+      : `<div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Get in line</button></div>`}
     <p class="muted" id="err" role="alert"></p></form>`);
-  $("#cx").onclick=()=>el.remove(); setTimeout(()=>$("#nm").focus(),60);
+  $("#cx").onclick=()=>el.remove(); setTimeout(()=>{const n=$("#nm"); if(n) n.focus()},60);
+  const wt=$("#wait"); if(wt) wt.onclick=()=>{ $("#f").innerHTML=`<span class="eyebrow">Sounds good</span><p style="font-size:1.1rem">The <b>Set ${S.sheet.next}</b> sign-up opens around <b>${S.sheet.nextAt}</b>, at the start of the break. Come back to this page then to grab a singer spot.</p><button type="button" class="btn ghost" id="ok">OK</button>`; $("#ok").onclick=()=>el.remove(); };
   $("#f").onsubmit=async e=>{
     e.preventDefault(); const name=$("#nm").value.trim(); if(!name) return;
     $("#go").disabled=true; $("#go").textContent="Adding you…";
@@ -264,12 +274,15 @@ function vTicket(){
   const me=S.entries.find(r=>S.mine&&r.id===S.mine.id);
   const act=S.entries.filter(r=>r.status==="waiting").sort(byOrder), ix=act.findIndex(r=>me&&r.id===me.id);
   const pl=me?placeOf(me):null;
-  let big,line,eyebrow=VENUES[S.loc].name;
+  let big,line,eyebrow=VENUES[S.loc].name,backupMoved=false;
   if(!S.night){big='<span class="spin"></span>';line="Finding your spot…"}
   else if(!me){big="?";line="We couldn't find your sign-up. Check with the host at the stage."}
   else if(me.status==="done"){big="★";line="You crushed it! Sign up again when the next set's sign-up opens."}
   else if(me.status==="skipped"){big="–";line="The host skipped your turn. Come see us at the stage."}
-  else if(pl&&!pl.singer){eyebrow+=` · Set ${me.set}`;big="B"+pl.spot;line=`You're backup #${pl.spot} for Set ${me.set}. We'll call you if a spot opens up.`}
+  else if(pl&&!pl.singer&&S.sheet&&S.sheet.set>me.set){eyebrow+=` · Set ${me.set}`;big="B"+pl.spot;
+    line=S.sheet.accepting?`Set ${me.set} is wrapping up and a spot didn't open for you. <b>Set ${S.sheet.set} sign-up is open now</b>, so sign up again to get a spot!`:`A spot didn't open for you in Set ${me.set}. ${sheetMsg(S.sheet)}`;
+    backupMoved=true}
+  else if(pl&&!pl.singer){eyebrow+=` · Set ${me.set}`;big="B"+pl.spot;line=`<b>You're a just-in-case backup</b> (#${pl.spot}) for Set ${me.set}. You'll only sing if one of the 12 singers can't. ${nextSetLine(me.set)}`}
   else if(ix===0){big="NOW";line="You're up! Head to the stage."}
   else if(ix===1){big="NEXT";line="You're on deck. Get close to the stage."}
   else {eyebrow+=` · Set ${me.set} · ${SET_TIMES[me.set]}`;big="#"+(pl?pl.spot:ix+1);line=`You're singer #${pl?pl.spot:ix+1} in Set ${me.set}. ${ix} singer${ix===1?"":"s"} ahead of you.`}
@@ -277,7 +290,7 @@ function vTicket(){
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
   ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`}
-  <button class="btn ghost" id="more">Browse the songbook</button>`;
+  ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}`;
 }
 bind.ticket=()=>{ $("#more").onclick=()=>{poll(0);go("songs")} };
 
