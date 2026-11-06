@@ -9,6 +9,10 @@ const VENUES = {
 };
 const RADIUS_M = 300;            // phone must be this close to the venue (plus GPS accuracy, capped)
 const MAX_PER_NIGHT = 400;
+// Three sets a night. Each sign-up sheet takes 12 singers + 3 backups.
+const SINGERS = 12, BACKUPS = 3, PER_SET = SINGERS + BACKUPS, LAST_SET = 3;
+const SET1_OPENS = 20 * 60 + 15;             // Set 1 sheet opens automatically at 8:15 pm
+const NEXT_SHEET_AT = { 2: "9:30", 3: "11:30" }; // shown to guests; hosts open sets 2 and 3 with a button
 const LOCK_AFTER = 5, LOCK_MS = 5 * 60e3;
 // One-time setup code lets Shonna set (or reset) her own PIN. Only its scrypt hash is stored here.
 const SETUP_SALT = "8d0a92d4b4a5a414ab34750ea0aad2ed";
@@ -86,8 +90,25 @@ const session = (cfg, h) => ({
   host: { id: h.id, name: h.name, admin: !!h.admin },
 });
 
+function chicagoMinutes() {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(new Date());
+  const get = (t) => Number(parts.find((p) => p.type === t).value);
+  return get("hour") * 60 + get("minute");
+}
+const entrySet = (e) => e.set || 1;
+// Where tonight's sign-up stands: which sheet is current, whether it's open, and how full it is.
+function sheetStatus(d, cfg) {
+  const sheet = d.sheet || { set: 1, open: null }; // open: null = Set 1 opens on the clock
+  let open = sheet.open;
+  if (open === null) { const m = chicagoMinutes(); open = !!cfg.testMode || m >= SET1_OPENS || m < 6 * 60; }
+  const count = d.entries.filter((e) => entrySet(e) === sheet.set && e.status !== "skipped").length;
+  const full = count >= PER_SET;
+  return { set: sheet.set, open, full, accepting: open && !full, count, perSet: PER_SET, singers: SINGERS, backups: BACKUPS,
+    next: sheet.set < LAST_SET ? sheet.set + 1 : null, nextAt: NEXT_SHEET_AT[sheet.set + 1] || null, auto: sheet.open === null };
+}
 const nightPath = (loc) => "night/" + loc + "/" + nightKey();
-const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt });
+const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt });
+const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry) });
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -109,7 +130,7 @@ export default async (req) => {
       const loc = url.searchParams.get("loc");
       if (!VENUES[loc]) return fail("Unknown location.");
       const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
-      return json({ night: nightKey(), entries: n.entries.map(publicEntry) });
+      return json(nightView(n, cfg));
     }
     if (route === "signup" && req.method === "POST") {
       const loc = body.loc, v = VENUES[loc];
@@ -123,16 +144,24 @@ export default async (req) => {
       }
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full. See the host at the stage.", status: 409 };
+        const sh = sheetStatus(d, cfg);
+        if (!sh.accepting) {
+          let msg;
+          if (sh.set === 1 && sh.auto && !sh.open) msg = "Sign-ups for Set 1 open at 8:15 pm.";
+          else if (sh.next) msg = "Set " + sh.set + " is full. The Set " + sh.next + " sign-up opens around " + sh.nextAt + ".";
+          else msg = "Tonight's sign-ups are full. Thanks for coming out!";
+          return { __error: msg, status: 409, closed: true };
+        }
         const key = songKey(song, artist);
         const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
         if (taken) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
         const mine = d.entries.find((e) => e.device === device && e.status === "waiting");
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
-        const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", pos: Date.now(), at: new Date().toISOString(), device };
+        const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
         d.entries.push(e);
         return { ok: true, id: e.id };
       });
-      if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken }, out.status || 400);
+      if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken, closed: out.closed }, out.status || 400);
       return json(out);
     }
     if (route === "login" && req.method === "POST") {
@@ -174,8 +203,8 @@ export default async (req) => {
     if (route === "host" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
-        const act = d.entries.filter((e) => e.status === "waiting").sort((a, b) => a.pos - b.pos);
         const e = d.entries.find((x) => x.id === body.id);
+        const act = d.entries.filter((x) => x.status === "waiting" && e && entrySet(x) === entrySet(e)).sort((a, b) => a.pos - b.pos); // same set only
         if (!e) return { __error: "That sign-up isn't on the list anymore.", status: 404 };
         const stamp = { by: me.name, doneAt: new Date().toISOString() };
         if (body.action === "done") Object.assign(e, { status: "done" }, stamp);
@@ -183,7 +212,8 @@ export default async (req) => {
         else if (body.action === "back") {
           const k = songKey(e.song, e.artist);
           const other = d.entries.find((x) => x.id !== e.id && x.status !== "skipped" && songKey(x.song, x.artist) === k);
-          if (other) return { __error: other.name + " picked " + e.song + " after the skip, so it can't go back in line. Ask " + e.name + " to pick another song.", status: 409 }; e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
+          if (other) return { __error: other.name + " picked " + e.song + " after the skip, so it can't go back in line. Ask " + e.name + " to pick another song.", status: 409 }; 
+          e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "up" || body.action === "down") {
           const i = act.findIndex((x) => x.id === e.id), j = body.action === "up" ? i - 1 : i + 1;
@@ -194,7 +224,22 @@ export default async (req) => {
       });
       if (out.__error) return fail(out.__error, out.status);
       const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
-      return json({ entries: n.entries.map(publicEntry) });
+      return json(nightView(n, cfg));
+    }
+    // Hosts open the next set's sheet, or close/reopen the current one.
+    if (route === "sheet" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const sh = sheetStatus(d, cfg);
+        if (body.op === "openNext") { if (!sh.next) return { __error: "Set " + LAST_SET + " is the last set tonight.", status: 400 }; d.sheet = { set: sh.next, open: true }; }
+        else if (body.op === "close") d.sheet = { set: sh.set, open: false };
+        else if (body.op === "reopen") d.sheet = { set: sh.set, open: true };
+        else return { __error: "Unknown request.", status: 400 };
+        return { ok: true };
+      });
+      if (out.__error) return fail(out.__error, out.status);
+      const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
+      return json(nightView(n, cfg));
     }
 
     // ---------- Shonna only ----------

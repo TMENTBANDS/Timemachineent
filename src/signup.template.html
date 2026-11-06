@@ -100,6 +100,21 @@ const VENUES = {
   frisco:{name:"Sidecar Frisco", addr:"6770 Winning Dr, Frisco", lat:33.1077444, lng:-96.8270188}
 };
 const API = "/api/lbk/";
+const SET_TIMES = {1:"8:30–9:30", 2:"10:00–11:00", 3:"11:30–12:30"};
+// Place within a set: the first 12 (not counting skips) are singers, the rest are backups.
+function placeOf(e){
+  const inSet=S.entries.filter(x=>x.set===e.set&&x.status!=="skipped").sort((a,b)=>a.pos-b.pos);
+  const i=inSet.findIndex(x=>x.id===e.id), n=S.sheet?.singers||12;
+  return i<0?null:(i<n?{singer:true,spot:i+1}:{singer:false,spot:i-n+1});
+}
+const byOrder=(a,b)=>(a.set-b.set)||(a.pos-b.pos);
+function sheetMsg(sh){
+  if(!sh) return "";
+  if(sh.accepting) return `Signing up for <b>Set ${sh.set}</b> (${SET_TIMES[sh.set]}). ${sh.perSet-sh.count} of ${sh.perSet} spots left.`;
+  if(sh.set===1&&sh.auto&&!sh.open) return "Sign-ups for Set 1 open at <b>8:15 pm</b>.";
+  if(sh.next) return `Set ${sh.set} is ${sh.full?"full":"closed"}. The <b>Set ${sh.next}</b> sign-up opens around <b>${sh.nextAt}</b>. Check back on the break!`;
+  return "Tonight's sign-ups are full. Thanks for coming out!";
+}
 const $ = s => document.querySelector(s);
 const $$ = s => document.querySelectorAll(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -129,9 +144,9 @@ function poll(ms){ clearInterval(pollTimer); if(ms) pollTimer=setInterval(refres
 async function refresh(){
   const loc = S.view==="host" ? S.hostLoc : S.loc;
   if(!loc) return;
-  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.lastErr=""; }catch(e){ S.lastErr=e.error }
+  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr=""; }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
-  else if(S.view==="songs" && $("#list")) drawList();
+  else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); }
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh() });
 
@@ -183,11 +198,13 @@ function checkLoc(loc){
   }, e=>fail(e.code===1?"Location is turned off for this page. Allow location in your browser settings, then try again.":"Your phone couldn't find its location."),
   {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
 }
+const sheetBox=()=>S.sheet?`<div class="status ${S.sheet.accepting?"ok":"bad"}" id="sheetbox"><span>${sheetMsg(S.sheet)}</span></div>`:`<div id="sheetbox"></div>`;
 function vSongs(){
   return `<div class="topbar"><span class="pill">${VENUES[S.loc].name} · tonight</span><button class="linkbtn" id="back">Change location</button></div>
   <h2>Find <span class="grad">your song</span></h2>
   <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
   <div class="row" style="justify-content:space-between;align-items:center"><div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div><span class="count" id="count"></span></div><p class="muted" style="font-size:.9rem">Each song can only be sung once a night. Songs already picked show as taken.</p></div>
+  ${sheetBox()}
   <ul class="list" id="list"></ul>`;
 }
 bind.songs = ()=>{
@@ -217,6 +234,10 @@ function drawList(){
 }
 function sheet(inner){ const el=document.createElement("div"); el.className="sheet"; el.innerHTML=inner; document.body.appendChild(el); el.onclick=e=>{if(e.target===el)el.remove()}; return el }
 function openSignup(r){
+  if(S.sheet && !S.sheet.accepting){
+    const el=sheet(`<form id="f"><span class="eyebrow">Sign-ups are closed</span><p style="font-size:1.1rem">${sheetMsg(S.sheet)}</p><button type="button" class="btn ghost" id="cx">OK</button></form>`);
+    $("#cx").onclick=()=>el.remove(); return;
+  }
   const el=sheet(`<form id="f"><span class="eyebrow">Sign up to sing</span>
     <div><div class="t" style="font-size:1.3rem">${esc(r.t)}</div><div class="a">${esc(r.a)}</div></div>
     <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
@@ -231,7 +252,7 @@ function openSignup(r){
       store.set("lbk-name",name); S.mine={id:res.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine);
       el.remove(); go("ticket"); refresh(); poll(5000);
     }catch(err){
-      if(err.taken){ refresh() }
+      if(err.taken||err.closed){ refresh() }
       if(err.id){ S.mine={id:err.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine) }
       $("#err").innerHTML=esc(err.error)+(err.id?` <button type="button" class="linkbtn" id="see">See my spot</button>`:"");
       const s=$("#see"); if(s) s.onclick=()=>{el.remove();go("ticket");refresh();poll(5000)};
@@ -241,16 +262,18 @@ function openSignup(r){
 }
 function vTicket(){
   const me=S.entries.find(r=>S.mine&&r.id===S.mine.id);
-  const act=S.entries.filter(r=>r.status==="waiting").sort((a,b)=>a.pos-b.pos), ix=act.findIndex(r=>me&&r.id===me.id);
-  let big,line;
+  const act=S.entries.filter(r=>r.status==="waiting").sort(byOrder), ix=act.findIndex(r=>me&&r.id===me.id);
+  const pl=me?placeOf(me):null;
+  let big,line,eyebrow=VENUES[S.loc].name;
   if(!S.night){big='<span class="spin"></span>';line="Finding your spot…"}
   else if(!me){big="?";line="We couldn't find your sign-up. Check with the host at the stage."}
-  else if(me.status==="done"){big="★";line="You crushed it! Pick another song any time."}
+  else if(me.status==="done"){big="★";line="You crushed it! Sign up again when the next set's sign-up opens."}
   else if(me.status==="skipped"){big="–";line="The host skipped your turn. Come see us at the stage."}
+  else if(pl&&!pl.singer){eyebrow+=` · Set ${me.set}`;big="B"+pl.spot;line=`You're backup #${pl.spot} for Set ${me.set}. We'll call you if a spot opens up.`}
   else if(ix===0){big="NOW";line="You're up! Head to the stage."}
-  else if(ix===1){big="#2";line="You're on deck. Get close to the stage."}
-  else {big="#"+(ix+1);line=`${ix} singers ahead of you`}
-  return `${brand}<span class="eyebrow">${VENUES[S.loc].name}</span>
+  else if(ix===1){big="NEXT";line="You're on deck. Get close to the stage."}
+  else {eyebrow+=` · Set ${me.set} · ${SET_TIMES[me.set]}`;big="#"+(pl?pl.spot:ix+1);line=`You're singer #${pl?pl.spot:ix+1} in Set ${me.set}. ${ix} singer${ix===1?"":"s"} ahead of you.`}
+  return `${brand}<span class="eyebrow">${eyebrow}</span>
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
   ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`}
@@ -316,33 +339,52 @@ bind.hostloc=()=>{ bindBar(); $$(".venue").forEach(b=>b.onclick=()=>{S.hostLoc=b
 function nightLabel(){ const n=S.night||S.settings?.night; return n?new Date(n+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}):"" }
 function startHost(){ refresh(); poll(3000) }
 function vHost(){
-  const all=S.entries.slice().sort((a,b)=>a.pos-b.pos), act=all.filter(r=>r.status==="waiting"), past=all.filter(r=>r.status!=="waiting").sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
-  const sang=past.filter(r=>r.status==="done").length, sk=past.length-sang;
-  const item=(r,i,n)=>`<li class="${i===0?"now":""}"><span class="pos">${i+1}</span>
-    <span class="who">${esc(r.name)}${i===0?'<span class="tag">Now</span>':i===1?'<span class="tag deck">On deck</span>':""}</span>
+  const all=S.entries.slice().sort(byOrder), act=all.filter(r=>r.status==="waiting"), past=all.filter(r=>r.status!=="waiting").sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
+  const sang=past.filter(r=>r.status==="done").length, sk=past.length-sang, sh=S.sheet;
+  const singersWaiting=act.filter(r=>placeOf(r)?.singer);
+  const item=(r,i,list)=>{ const pl=placeOf(r)||{singer:true,spot:i+1}, g=singersWaiting.indexOf(r);
+    return `<li class="${g===0?"now":""}"><span class="pos">${pl.singer?pl.spot:"B"+pl.spot}</span>
+    <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.singer?"":'<span class="tag deck">Backup</span>'}</span>
     <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
     <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
     <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
-    <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===n-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
-    <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`;
+    <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===list.length-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
+    <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`; };
+  const sets=[1,2,3].filter(s=>all.some(r=>r.set===s)||(sh&&s<=sh.set));
+  const setBlock=s=>{ const w=act.filter(r=>r.set===s), kept=all.filter(r=>r.set===s&&r.status!=="skipped").length, n=sh?.singers||12;
+    return `<div style="display:flex;flex-direction:column;gap:8px"><div class="topbar"><h3>Set ${s} · ${SET_TIMES[s]}</h3><span class="muted" style="font-size:.9rem;font-variant-numeric:tabular-nums">${Math.min(kept,n)} of ${n} singers${kept>n?` · ${kept-n} backup${kept-n===1?"":"s"}`:""}</span></div>
+    ${w.length?`<ol class="q">${w.map((r,i)=>item(r,i,w)).join("")}</ol>`:`<div class="empty">${kept?"Everyone in this set has had a turn.":"No sign-ups yet."}</div>`}</div>`; };
+  let ctl="";
+  if(sh){
+    const state = sh.accepting?`<b>Set ${sh.set} sign-up is open</b> · ${sh.count} of ${sh.perSet} (12 singers + 3 backups)`
+      : sh.full?`<b>Set ${sh.set} is full</b> · ${sh.count} of ${sh.perSet}`
+      : (sh.set===1&&sh.auto)?`<b>Set 1 sign-up opens at 8:15 pm</b>` : `<b>Set ${sh.set} sign-up is closed</b>`;
+    const btns=[];
+    if(sh.accepting) btns.push(`<button class="btn small ghost" data-sheet="close">Close sign-ups</button>`);
+    else if(!sh.full) btns.push(`<button class="btn small${sh.set===1&&sh.auto?"":" ghost"}" data-sheet="reopen">${sh.set===1&&sh.auto?"Open Set 1 now":"Reopen Set "+sh.set}</button>`);
+    if(sh.next) btns.push(`<button class="btn small" data-sheet="openNext">Open Set ${sh.next} sign-up</button>`);
+    ctl=`<div class="status ${sh.accepting?"ok":""}"><span>${state}</span><div class="row">${btns.join("")}</div></div>`;
+  }
   return `${hostBar(" · "+VENUES[S.hostLoc].name)}
   <div><h2>${nightLabel()}</h2><p class="muted" style="font-variant-numeric:tabular-nums">${S.night?`${all.length} sign-ups · ${act.length} in line · ${sang} sang${sk?` · ${sk} skipped`:""}`:'<span class="spin"></span> Loading the list…'}</p></div>
   <div class="row"><button class="btn small ghost" id="sw">Switch location</button></div>
+  ${ctl}
   ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
-  ${act.length?`<ol class="q">${act.map((r,i)=>item(r,i,act.length)).join("")}</ol>`:S.night?`<div class="empty">${all.length?"Everyone in line has had a turn.":"No one's signed up yet tonight."} New sign-ups show up here in order.</div>`:""}
-  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">·</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
+  ${S.night?sets.map(setBlock).join(""):""}
+  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
   ${testNote()}`;
 }
 bind.host=()=>{
   bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
-  $$("[data-a]").forEach(b=>b.onclick=async()=>{
-    $$("[data-a]").forEach(x=>x.disabled=true);
-    S.actionErr="";
-    try{ const r=await api("host",{body:{token:S.token,loc:S.hostLoc,id:b.dataset.id,action:b.dataset.a}}); S.entries=r.entries; S.lastErr="" }
+  const run=async(path,body,btn)=>{
+    $$("[data-a],[data-sheet]").forEach(x=>x.disabled=true); S.actionErr="";
+    try{ const r=await api(path,{body:{token:S.token,loc:S.hostLoc,...body}}); S.entries=r.entries; S.sheet=r.sheet; S.lastErr="" }
     catch(e){ if(e.status===401){logout();return} S.actionErr=e.error }
     render();
-  });
+  };
+  $$("[data-a]").forEach(b=>b.onclick=()=>run("host",{id:b.dataset.id,action:b.dataset.a}));
+  $$("[data-sheet]").forEach(b=>b.onclick=()=>run("sheet",{op:b.dataset.sheet}));
 };
 async function openManage(){ poll(0); go("manage"); try{ S.hosts=(await api("hosts")).hosts }catch(e){} render() }
 function vManage(){
