@@ -283,9 +283,10 @@ function vTicket(){
     line=S.sheet.accepting?`Set ${me.set} is wrapping up and a spot didn't open for you. <b>Set ${S.sheet.set} sign-up is open now</b>, so sign up again to get a spot!`:`A spot didn't open for you in Set ${me.set}. ${sheetMsg(S.sheet)}`;
     backupMoved=true}
   else if(pl&&!pl.singer){eyebrow+=` · Set ${me.set}`;big="BACKUP";line=`<b>You're a just-in-case backup</b> for Set ${me.set}. You'll only sing if one of the 12 singers can't. ${nextSetLine(me.set)}`}
-  else if(ix===0){big="UP NEXT";line="You're up next! Head to the stage."}
-  else if(ix===1){big="ON DECK";line="You're on deck after the next singer. Get close to the stage."}
-  else {eyebrow+=` · Set ${me.set} · ${SET_TIMES[me.set]}`;big="✓";line=`You're on the list for Set ${me.set}! Keep this page open. It will tell you when you're on deck.`}
+  else if(ix===0){big="NOW";line="You're up now! Head to the stage."}
+  else if(ix===1){big="2ND";line="You're next! Get close to the stage."}
+  else if(ix===2){big="3RD";line="You're 3rd in line. Start heading toward the stage."}
+  else {eyebrow+=` · Set ${me.set} · ${SET_TIMES[me.set]}`;big="✓";line=`You're on the list for Set ${me.set}! Keep this page open. It will tell you when you're 3rd in line.`}
   return `${brand}<span class="eyebrow">${eyebrow}</span>
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
