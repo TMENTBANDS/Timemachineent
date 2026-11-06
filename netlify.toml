@@ -1,0 +1,12 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+  command = "node scripts/build-signup.mjs"
+
+[functions]
+  node_bundler = "esbuild"
+
+[[headers]]
+  for = "/signup"
+  [headers.values]
+    Cache-Control = "no-cache"

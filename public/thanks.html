@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Thanks! | Time Machine Entertainment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;600;700;800&display=swap">
+<style>
+:root { --bg:#0c0907; --fg:#fbf3ea; --muted:#cdbfae; --warm:linear-gradient(90deg,#d9541e,#ff8a1f,#ffcf40); }
+* { box-sizing: border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:radial-gradient(1200px 600px at 50% -10%, rgba(255,138,31,.18), transparent 60%), var(--bg); color:var(--fg); font-family:Barlow, system-ui, sans-serif; text-align:center; padding:32px 16px; }
+.mark { display:flex; gap:6px; justify-content:center; margin-bottom:22px; }
+.mark svg { width:34px; height:28px; }
+h1 { font-family:Anton, Impact, sans-serif; font-weight:400; text-transform:uppercase; font-size:clamp(2.8rem,9vw,5.5rem); line-height:.95; margin:0; }
+h1 span { background:var(--warm); -webkit-background-clip:text; background-clip:text; color:transparent; }
+p { color:var(--muted); font-size:1.15rem; max-width:44ch; margin:18px auto 30px; }
+.btns { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; }
+a.btn { font-weight:800; letter-spacing:.12em; text-transform:uppercase; text-decoration:none; padding:13px 26px; border-radius:999px; border:2px solid var(--fg); color:var(--fg); }
+a.btn.fire { background:var(--warm); border-color:transparent; color:#1a0d05; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark" aria-hidden="true">
+    <svg viewBox="0 0 34 28"><path d="M17 2 3 14l14 12zM31 2 17 14l14 12z" fill="#ff2e88"/></svg>
+    <svg viewBox="0 0 34 28"><path d="M9 2l18 12L9 26z" fill="#ff8a1f"/></svg>
+    <svg viewBox="0 0 34 28"><path d="M3 2l14 12L3 26zM17 2l14 12-14 12z" fill="#23d5f5"/></svg>
+  </div>
+  <h1>Request <span>received!</span></h1>
+  <p>Thanks for reaching out to Time Machine Entertainment. We'll check the date and get back to you soon.</p>
+  <div class="btns">
+    <a class="btn fire" href="/">Back to home</a>
+    <a class="btn" href="javascript:history.back()">Back to the page</a>
+  </div>
+</main>
+</body>
+</html>

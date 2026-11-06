@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0907">
+<meta name="robots" content="noindex">
+<title>Live Band Karaoke Sign-Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700;800&display=swap">
+<style>
+/* Matches timemachineent.com: stage-dark ground, warm gradient accent, Anton display + Barlow body */
+:root{--bg:#0c0907;--panel:#1b1410;--line:#3a2a1f;--fg:#fbf3ea;--muted:#c9b8a4;--gold:#ffcf40;--orange:#ff8a1f;--ink:#1a0d05;--ok:#7bd88f;--warn:#ff7a59;
+  --warm:linear-gradient(90deg,#d9541e,#ff8a1f,#ffcf40);--display:Anton,Impact,"Arial Narrow",sans-serif;--body:Barlow,system-ui,-apple-system,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:radial-gradient(900px 420px at 50% -8%,rgba(255,138,31,.16),transparent 60%),var(--bg);color:var(--fg);font-family:var(--body);font-size:17px;line-height:1.4;min-height:100vh;
+  padding:max(18px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.wrap{max-width:580px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2{font-family:var(--display);font-weight:400;text-transform:uppercase;margin:0;line-height:.98;letter-spacing:.01em;text-wrap:balance}
+h1{font-size:clamp(2.4rem,11vw,3.6rem)}
+h1 span,.grad{background:var(--warm);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:1.9rem}
+h3{margin:0;font-size:1.05rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.muted{color:var(--muted)}
+.eyebrow{font-weight:800;font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn{border:0;border-radius:999px;padding:14px 22px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;font-size:.95rem;background:var(--warm);color:var(--ink)}
+.btn.ghost{background:transparent;color:var(--fg);border:2px solid var(--line)}
+.btn.small{padding:8px 14px;font-size:.78rem;letter-spacing:.08em}
+.btn:disabled{opacity:.45;cursor:default}
+.linkbtn{background:none;border:0;color:var(--muted);text-decoration:underline;padding:6px 0;font-size:.95rem}
+.mark{display:flex;gap:6px}
+.mark svg{width:28px;height:23px}
+.venues{display:grid;gap:12px}
+.venue{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+.venue strong{font-family:var(--display);font-weight:400;text-transform:uppercase;font-size:1.6rem;display:block;letter-spacing:.02em}
+.venue span{color:var(--muted);font-size:.95rem}
+.venue .go{font-size:1.6rem;color:var(--orange)}
+.status{border-radius:14px;padding:14px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:10px}
+.status.bad{border-color:var(--warn)}
+.status.ok{border-color:var(--ok)}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.85rem;color:var(--muted);font-weight:600}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.search{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;display:flex;flex-direction:column;gap:10px}
+.search input{width:100%;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);font-size:1.05rem}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{background:none;border:0;padding:8px 16px;font-size:.85rem;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--warm);color:var(--ink)}
+.count{font-size:.9rem;color:var(--muted)}
+.list{list-style:none;margin:0;padding:0}
+.list li button{width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 2px;display:flex;flex-direction:column;gap:1px}
+.list li button:hover .t{color:var(--gold)}
+.t{font-weight:700;font-size:1.05rem}
+.a{color:var(--muted);font-size:.92rem}
+.letter{font-family:var(--display);font-size:1.3rem;color:var(--orange);padding:16px 2px 4px;border-bottom:1px solid var(--line)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet form{background:var(--panel);border-top:3px solid var(--orange);border-radius:22px 22px 0 0;width:100%;max-width:580px;display:flex;flex-direction:column;gap:14px;
+  padding:22px max(18px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.9rem;color:var(--muted);font-weight:600}
+.field input,.field select{padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg);font-size:1.05rem;width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .btn{flex:1 1 140px}
+.ticket{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:10px;text-align:center}
+.ticket .num{font-family:var(--display);font-size:5rem;line-height:1;font-variant-numeric:tabular-nums}
+.ticket .song{font-weight:800;font-size:1.2rem}
+.q{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.q li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;grid-template-columns:2.4rem 1fr;gap:3px 10px}
+.q li.now{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange) inset}
+.q .pos{font-family:var(--display);font-size:1.6rem;color:var(--orange);grid-row:span 2;font-variant-numeric:tabular-nums}
+.q .who{font-weight:800;min-width:0;overflow-wrap:anywhere}
+.q .what{color:var(--muted);font-size:.95rem;min-width:0;overflow-wrap:anywhere}
+.q .acts{grid-column:2;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.q.done li{opacity:.65}
+.tag{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:var(--gold);border-radius:6px;padding:2px 6px;font-weight:800;margin-left:6px;vertical-align:2px}
+.tag.deck{background:var(--muted)}.tag.skip{background:var(--warn)}.tag.done{background:var(--ok)}
+.empty{border:1px dashed var(--line);border-radius:16px;padding:22px;text-align:center;color:var(--muted)}
+.note{font-size:.9rem;color:var(--muted);border-left:3px solid var(--orange);padding:6px 10px}
+.foot{display:flex;justify-content:center;gap:18px;padding-top:10px;flex-wrap:wrap}
+.toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--orange);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="muted"><span class="spin"></span> Loading…</p></div>
+<script>
+const SONGS = __SONGS__;
+const VENUES = {
+  addison:{name:"Sidecar Addison", addr:"5100 Belt Line Rd, Dallas", lat:32.950981, lng:-96.8190583},
+  frisco:{name:"Sidecar Frisco", addr:"6770 Winning Dr, Frisco", lat:33.1077444, lng:-96.8270188}
+};
+const API = "/api/lbk/";
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}, set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g,"");
+const LIB = SONGS.map(([a,t],i)=>({i,a,t,k:norm(t+" "+a),ks:norm(t).replace(/^the /,""),ka:norm(a).replace(/^the /,"")}));
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
+let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
+
+async function api(path, opts={}){
+  const o = {method:opts.body?"POST":"GET", headers:{"content-type":"application/json"}};
+  if(opts.body) o.body = JSON.stringify(opts.body);
+  if(S.token) o.headers["x-host-token"] = S.token;
+  let r; try{ r = await fetch(API+path, o) }catch(e){ throw {error:"No connection. Check your signal and try again."} }
+  const j = await r.json().catch(()=>({error:"Something went wrong. Try again."}));
+  if(!r.ok) throw {...j, status:r.status};
+  return j;
+}
+
+const S = {view:"venues", loc:null, q:"", by:"song", settings:null, entries:[], night:null,
+  mine:store.get("lbk-mine"), token:store.get("lbk-host")?.token||null, me:store.get("lbk-host")?.host||null,
+  hostLoc:store.get("lbk-hostloc"), hosts:[], lastErr:""};
+let pollTimer=null;
+function poll(ms){ clearInterval(pollTimer); if(ms) pollTimer=setInterval(refresh, ms) }
+async function refresh(){
+  const loc = S.view==="host" ? S.hostLoc : S.loc;
+  if(!loc) return;
+  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.lastErr=""; }catch(e){ S.lastErr=e.error }
+  if(S.view==="ticket"||S.view==="host") render();
+}
+document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh() });
+
+const bind = {};
+function go(v){ S.view=v; render(); }
+function render(){
+  const views={venues:vVenues,songs:vSongs,ticket:vTicket,login:vLogin,setup:vSetup,hostloc:vHostLoc,host:vHost,manage:vManage};
+  const keepScroll = (S.view==="host"||S.view==="ticket");
+  const y = window.scrollY;
+  $("#app").innerHTML = views[S.view]();
+  bind[S.view] && bind[S.view]();
+  if(keepScroll) window.scrollTo(0,y);
+}
+const brand = `<div class="mark" aria-hidden="true">
+ <svg viewBox="0 0 34 28"><path d="M17 2 3 14l14 12zM31 2 17 14l14 12z" fill="#ff2e88"/></svg>
+ <svg viewBox="0 0 34 28"><path d="M9 2l18 12L9 26z" fill="#ff8a1f"/></svg>
+ <svg viewBox="0 0 34 28"><path d="M3 2l14 12L3 26zM17 2l14 12-14 12z" fill="#23d5f5"/></svg></div>`;
+const venueButtons = () => Object.entries(VENUES).map(([k,x])=>`<button class="venue" data-loc="${k}"><div><strong>${x.name}</strong><span>${x.addr}</span></div><span class="go" aria-hidden="true">→</span></button>`).join("");
+const testNote = () => S.settings?.testMode ? `<p class="note">Test mode is on: the location check is off.</p>` : "";
+
+// ---------------- guests ----------------
+function vVenues(){
+  const mineTonight = S.mine && S.settings && S.mine.night===S.settings.night;
+  return `${brand}<span class="eyebrow">Time Machine Live Band Karaoke</span>
+  <h1>Sing with <span>the band</span></h1>
+  <p class="muted">Pick where you are tonight. We'll check your phone's location, then you can choose a song and get in line.</p>
+  ${mineTonight?`<button class="btn ghost" id="myspot">See my spot in line</button>`:""}
+  <div class="venues">${venueButtons()}</div>
+  <div id="geo"></div>${testNote()}
+  <div class="foot"><a class="linkbtn" href="/songbook">Just browsing? See the songbook</a><button class="linkbtn" id="hostlink">Host login</button></div>`;
+}
+bind.venues = ()=>{
+  $$(".venue").forEach(b=>b.onclick=()=>checkLoc(b.dataset.loc));
+  $("#hostlink").onclick=()=>{ if(S.token){ go(S.hostLoc?"host":"hostloc"); startHost(); } else openLogin(); };
+  const m=$("#myspot"); if(m) m.onclick=()=>{S.loc=S.mine.loc; go("ticket"); refresh(); poll(5000)};
+};
+function geoBox(html,cls){ $("#geo").innerHTML=`<div class="status ${cls||""}">${html}</div>` }
+function checkLoc(loc){
+  const x=VENUES[loc];
+  if(S.settings?.testMode){ S.loc=loc; S.geo=null; go("songs"); return; }
+  geoBox(`<span><span class="spin"></span> Checking that you're at <b>${x.name}</b>…</span>`);
+  const fail=why=>{ geoBox(`<span><b>Couldn't confirm you're at ${x.name}.</b> ${why}</span><span class="muted">Online sign-up only works inside the venue. You can still sign up with the host at the stage.</span><div class="row"><button class="btn small ghost" id="retry">Try again</button></div>`,"bad"); $("#retry").onclick=()=>checkLoc(loc) };
+  if(!navigator.geolocation){ fail("This browser can't share location."); return }
+  navigator.geolocation.getCurrentPosition(p=>{
+    const R=6371e3,t=v=>v*Math.PI/180,{latitude:la,longitude:lo,accuracy:ac}=p.coords;
+    const h=Math.sin(t(x.lat-la)/2)**2+Math.cos(t(la))*Math.cos(t(x.lat))*Math.sin(t(x.lng-lo)/2)**2, d=2*R*Math.asin(Math.sqrt(h));
+    if(d <= 300+Math.min(ac||0,200)){ S.loc=loc; S.geo={lat:la,lng:lo,acc:ac}; go("songs"); }
+    else fail(`Your phone says you're about ${(d/1609).toFixed(1)} miles away.`);
+  }, e=>fail(e.code===1?"Location is turned off for this page. Allow location in your browser settings, then try again.":"Your phone couldn't find its location."),
+  {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
+}
+function vSongs(){
+  return `<div class="topbar"><span class="pill">${VENUES[S.loc].name} · tonight</span><button class="linkbtn" id="back">Change location</button></div>
+  <h2>Find <span class="grad">your song</span></h2>
+  <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
+  <div class="row" style="justify-content:space-between;align-items:center"><div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div><span class="count" id="count"></span></div></div>
+  <ul class="list" id="list"></ul>`;
+}
+bind.songs = ()=>{
+  $("#back").onclick=()=>go("venues");
+  const q=$("#q"); q.oninput=()=>{S.q=q.value;drawList()};
+  $$(".seg button").forEach(b=>b.onclick=()=>{S.by=b.dataset.by;render()});
+  drawList();
+};
+function drawList(){
+  const w=norm(S.q).split(" ").filter(Boolean), key=S.by==="song"?"ks":"ka";
+  const rows=LIB.filter(r=>w.every(x=>r.k.includes(x))).sort((x,y)=>x[key].localeCompare(y[key])||x.ks.localeCompare(y.ks));
+  $("#count").textContent=rows.length.toLocaleString()+" songs";
+  let html="",cur="";
+  rows.slice(0,500).forEach(r=>{
+    const L=/[a-z]/.test(r[key][0])?r[key][0].toUpperCase():"#";
+    if(!w.length&&L!==cur){html+=`<li class="letter" aria-hidden="true">${L}</li>`;cur=L}
+    const a=S.by==="song"?r.t:r.a, b=S.by==="song"?r.a:r.t;
+    html+=`<li><button data-i="${r.i}"><span class="t">${esc(a)}</span><span class="a">${esc(b)}</span></button></li>`;
+  });
+  if(rows.length>500) html+=`<li class="muted" style="padding:14px 2px">Showing 500 of ${rows.length.toLocaleString()}. Search to narrow it down.</li>`;
+  if(!rows.length) html=`<li class="empty">No match for “${esc(S.q)}”. Try fewer words, or just the artist.</li>`;
+  $("#list").innerHTML=html;
+  $("#list").querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>openSignup(LIB[+b.dataset.i]));
+}
+function sheet(inner){ const el=document.createElement("div"); el.className="sheet"; el.innerHTML=inner; document.body.appendChild(el); el.onclick=e=>{if(e.target===el)el.remove()}; return el }
+function openSignup(r){
+  const el=sheet(`<form id="f"><span class="eyebrow">Sign up to sing</span>
+    <div><div class="t" style="font-size:1.3rem">${esc(r.t)}</div><div class="a">${esc(r.a)}</div></div>
+    <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
+    <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Get in line</button></div>
+    <p class="muted" id="err" role="alert"></p></form>`);
+  $("#cx").onclick=()=>el.remove(); setTimeout(()=>$("#nm").focus(),60);
+  $("#f").onsubmit=async e=>{
+    e.preventDefault(); const name=$("#nm").value.trim(); if(!name) return;
+    $("#go").disabled=true; $("#go").textContent="Adding you…";
+    try{
+      const res=await api("signup",{body:{loc:S.loc,name,song:r.t,artist:r.a,device,...(S.geo||{})}});
+      store.set("lbk-name",name); S.mine={id:res.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine);
+      el.remove(); go("ticket"); refresh(); poll(5000);
+    }catch(err){
+      if(err.id){ S.mine={id:err.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine) }
+      $("#err").innerHTML=esc(err.error)+(err.id?` <button type="button" class="linkbtn" id="see">See my spot</button>`:"");
+      const s=$("#see"); if(s) s.onclick=()=>{el.remove();go("ticket");refresh();poll(5000)};
+      $("#go").disabled=false; $("#go").textContent="Get in line";
+    }
+  };
+}
+function vTicket(){
+  const me=S.entries.find(r=>S.mine&&r.id===S.mine.id);
+  const act=S.entries.filter(r=>r.status==="waiting").sort((a,b)=>a.pos-b.pos), ix=act.findIndex(r=>me&&r.id===me.id);
+  let big,line;
+  if(!S.night){big='<span class="spin"></span>';line="Finding your spot…"}
+  else if(!me){big="?";line="We couldn't find your sign-up. Check with the host at the stage."}
+  else if(me.status==="done"){big="★";line="You crushed it! Pick another song any time."}
+  else if(me.status==="skipped"){big="–";line="The host skipped your turn. Come see us at the stage."}
+  else if(ix===0){big="NOW";line="You're up! Head to the stage."}
+  else if(ix===1){big="#2";line="You're on deck. Get close to the stage."}
+  else {big="#"+(ix+1);line=`${ix} singers ahead of you`}
+  return `${brand}<span class="eyebrow">${VENUES[S.loc].name}</span>
+  <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
+  ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
+  ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`}
+  <button class="btn ghost" id="more">Browse the songbook</button>`;
+}
+bind.ticket=()=>{ $("#more").onclick=()=>{poll(0);go("songs")} };
+
+// ---------------- hosts ----------------
+async function openLogin(){
+  go("login");
+  try{ S.hosts=(await api("hosts")).hosts }catch(e){ S.hosts=[]; S.lastErr=e.error }
+  if(S.view==="login") render();
+}
+function vLogin(){
+  if(!S.hosts.length) return `${brand}<h2>Host login</h2><p class="muted"><span class="spin"></span> Loading hosts…</p><button class="btn ghost" id="cx">Back</button>`;
+  const last=store.get("lbk-lasthost");
+  return `${brand}<h2>Host <span class="grad">login</span></h2><p class="muted">Pick your name and enter your PIN.</p>
+  <form id="lf" style="display:flex;flex-direction:column;gap:14px">
+   <div class="field"><label for="who">Your name</label><select id="who" required><option value="">Choose your name</option>${S.hosts.map(h=>`<option value="${h.id}" ${last===h.id?"selected":""}>${esc(h.name)}${h.hasPin?"":" (no PIN yet)"}</option>`).join("")}</select></div>
+   <div class="field"><label for="pin">Your PIN</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></div>
+   <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Log in</button></div>
+   <p class="muted" id="perr" role="alert"></p></form>
+  <div class="foot"><button class="linkbtn" id="setup">Shonna: first-time setup</button></div>`;
+}
+bind.login=()=>{
+  $("#cx").onclick=()=>go("venues");
+  const f=$("#lf"); if(!f) return;
+  $("#setup").onclick=()=>go("setup");
+  f.onsubmit=async e=>{
+    e.preventDefault(); $("#go").disabled=true;
+    try{ const s=await api("login",{body:{hostId:$("#who").value,pin:$("#pin").value}}); signedIn(s) }
+    catch(err){ $("#perr").textContent=err.error; $("#pin").value=""; $("#go").disabled=false; $("#pin").focus() }
+  };
+};
+function signedIn(s){
+  S.token=s.token; S.me=s.host; store.set("lbk-host",s); store.set("lbk-lasthost",s.host.id);
+  go("hostloc");
+}
+function vSetup(){
+  return `${brand}<h2>First-time <span class="grad">setup</span></h2>
+  <p class="muted">Enter the setup code Claude gave you and choose your own PIN. You can also use this if you ever forget your PIN.</p>
+  <form id="sf" style="display:flex;flex-direction:column;gap:14px">
+   <div class="field"><label for="code">Setup code</label><input id="code" autocomplete="off" autocapitalize="characters" required placeholder="XXXX-XXXX-XXXX"></div>
+   <div class="field"><label for="np">Your new PIN (4–6 numbers)</label><input id="np" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" required></div>
+   <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Save my PIN</button></div>
+   <p class="muted" id="serr" role="alert"></p></form>`;
+}
+bind.setup=()=>{
+  $("#cx").onclick=()=>openLogin();
+  $("#sf").onsubmit=async e=>{
+    e.preventDefault(); $("#go").disabled=true;
+    try{ signedIn(await api("setup",{body:{code:$("#code").value,pin:$("#np").value}})) }
+    catch(err){ $("#serr").textContent=err.error; $("#go").disabled=false }
+  };
+};
+function hostBar(extra){ return `<div class="topbar"><span class="eyebrow">${esc(S.me.name)}${extra||""}</span><span class="row" style="gap:14px">${S.me.admin&&S.view!=="manage"?`<button class="linkbtn" id="mng">Manage hosts</button>`:""}<button class="linkbtn" id="out">Log out</button></span></div>` }
+function bindBar(){ $("#out").onclick=logout; const m=$("#mng"); if(m) m.onclick=()=>openManage() }
+function logout(){ S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbk-hostloc",null); S.hostLoc=null; poll(0); go("venues") }
+function vHostLoc(){
+  return `${hostBar()}<h1>Where are you <span>hosting?</span></h1><p class="muted">${nightLabel()}</p><div class="venues">${venueButtons()}</div>`;
+}
+bind.hostloc=()=>{ bindBar(); $$(".venue").forEach(b=>b.onclick=()=>{S.hostLoc=b.dataset.loc;store.set("lbk-hostloc",S.hostLoc);S.entries=[];S.night=null;go("host");startHost()}) };
+function nightLabel(){ const n=S.night||S.settings?.night; return n?new Date(n+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}):"" }
+function startHost(){ refresh(); poll(3000) }
+function vHost(){
+  const all=S.entries.slice().sort((a,b)=>a.pos-b.pos), act=all.filter(r=>r.status==="waiting"), past=all.filter(r=>r.status!=="waiting").sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
+  const sang=past.filter(r=>r.status==="done").length, sk=past.length-sang;
+  const item=(r,i,n)=>`<li class="${i===0?"now":""}"><span class="pos">${i+1}</span>
+    <span class="who">${esc(r.name)}${i===0?'<span class="tag">Now</span>':i===1?'<span class="tag deck">On deck</span>':""}</span>
+    <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
+    <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
+    <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
+    <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===n-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
+    <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`;
+  return `${hostBar(" · "+VENUES[S.hostLoc].name)}
+  <div><h2>${nightLabel()}</h2><p class="muted" style="font-variant-numeric:tabular-nums">${S.night?`${all.length} sign-ups · ${act.length} in line · ${sang} sang${sk?` · ${sk} skipped`:""}`:'<span class="spin"></span> Loading the list…'}</p></div>
+  <div class="row"><button class="btn small ghost" id="sw">Switch location</button></div>
+  ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
+  ${act.length?`<ol class="q">${act.map((r,i)=>item(r,i,act.length)).join("")}</ol>`:S.night?`<div class="empty">${all.length?"Everyone in line has had a turn.":"No one's signed up yet tonight."} New sign-ups show up here in order.</div>`:""}
+  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">·</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
+  ${testNote()}`;
+}
+bind.host=()=>{
+  bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
+  $$("[data-a]").forEach(b=>b.onclick=async()=>{
+    $$("[data-a]").forEach(x=>x.disabled=true);
+    try{ const r=await api("host",{body:{token:S.token,loc:S.hostLoc,id:b.dataset.id,action:b.dataset.a}}); S.entries=r.entries; S.lastErr="" }
+    catch(e){ if(e.status===401){logout();return} S.lastErr=e.error }
+    render();
+  });
+};
+async function openManage(){ poll(0); go("manage"); try{ S.hosts=(await api("hosts")).hosts }catch(e){} render() }
+function vManage(){
+  return `${hostBar()}<h2>Manage <span class="grad">hosts</span></h2>
+  <p class="muted">Each host logs in with their name and their own 4–6 number PIN. Changing a PIN logs that host out everywhere.</p>
+  <ul class="q">${S.hosts.map(h=>`<li style="grid-template-columns:1fr"><span class="who">${esc(h.name)}${h.admin?'<span class="tag deck">You</span>':""}${h.hasPin?"":'<span class="tag skip">No PIN yet</span>'}</span>
+    <div class="acts" style="grid-column:1" id="acts-${h.id}"><button class="btn small${h.hasPin?" ghost":""}" data-pin="${h.id}">${h.hasPin?"Change PIN":"Set PIN"}</button>${h.admin?"":`<button class="btn small ghost" data-rm="${h.id}">Remove</button>`}</div></li>`).join("")}</ul>
+  <form id="af" style="display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--line);padding-top:16px">
+    <h3>Add a host</h3>
+    <div class="field"><label for="an">Name</label><input id="an" maxlength="30" required autocomplete="off"></div>
+    <div class="field"><label for="ap">PIN (4–6 numbers)</label><input id="ap" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" required autocomplete="off"></div>
+    <button class="btn" id="ago">Add host</button><p class="muted" id="aerr" role="alert"></p></form>
+  <h3>Location check</h3>
+  <div class="toggle"><div><b>${S.settings?.testMode?"Off (test mode)":"On"}</b><p class="muted" style="font-size:.9rem">${S.settings?.testMode?"Anyone can sign up from anywhere. Turn it on before going live.":"Guests must be at the Sidecar to sign up."}</p></div>
+    <button class="btn small${S.settings?.testMode?"":" ghost"}" id="tm">${S.settings?.testMode?"Turn on":"Turn off"}</button></div>
+  <div class="row"><button class="btn ghost" id="bk">Back to tonight's list</button></div>`;
+}
+async function admin(body){ try{ const r=await api("admin",{body:{token:S.token,...body}}); if(r.hosts) S.hosts=r.hosts; return r }catch(e){ if(e.status===401) logout(); throw e } }
+bind.manage=()=>{
+  bindBar();
+  $("#bk").onclick=()=>{ go(S.hostLoc?"host":"hostloc"); if(S.hostLoc) startHost() };
+  $("#tm").onclick=async()=>{ $("#tm").disabled=true; const on=!S.settings.testMode; try{ await admin({op:"testMode",on}); S.settings.testMode=on }catch(e){} render() };
+  $("#af").onsubmit=async e=>{ e.preventDefault(); $("#ago").disabled=true;
+    try{ const n=$("#an").value.trim(); await admin({op:"add",name:n,pin:$("#ap").value.trim()}); render(); $("#aerr").textContent=n+" added." }
+    catch(err){ $("#aerr").textContent=err.error; $("#ago").disabled=false } };
+  $$("[data-rm]").forEach(b=>b.onclick=()=>{ const h=S.hosts.find(x=>x.id===b.dataset.rm), box=$("#acts-"+h.id);
+    box.innerHTML=`<span class="muted">Remove ${esc(h.name)}?</span><button class="btn small" id="y">Remove</button><button class="btn small ghost" id="n">Keep</button>`;
+    $("#n").onclick=render; $("#y").onclick=async()=>{ try{ await admin({op:"remove",id:h.id}) }catch(e){} render() } });
+  $$("[data-pin]").forEach(b=>b.onclick=()=>{ const h=S.hosts.find(x=>x.id===b.dataset.pin), box=$("#acts-"+h.id);
+    box.innerHTML=`<input id="np" inputmode="numeric" maxlength="6" placeholder="New PIN" aria-label="New PIN for ${esc(h.name)}" style="padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);width:8.5rem"><button class="btn small" id="sv">Save</button><button class="btn small ghost" id="n">Cancel</button><span class="muted" id="pe"></span>`;
+    $("#np").focus(); $("#n").onclick=render;
+    $("#sv").onclick=async()=>{ try{ await admin({op:"setPin",id:h.id,pin:$("#np").value.trim()}); if(h.admin){ logout(); openLogin(); return } render() }catch(e){ $("#pe").textContent=e.error } } });
+};
+
+// ---------------- start ----------------
+(async()=>{
+  try{ S.settings=await api("settings") }catch(e){ S.settings={testMode:false,night:null} }
+  if(S.token){ try{ const r=await api("me"); S.me=r.host }catch(e){ S.token=null; S.me=null; store.set("lbk-host",null) } }
+  if(location.hash==="#host"){ if(S.token){ S.view=S.hostLoc?"host":"hostloc"; render(); if(S.hostLoc) startHost(); } else openLogin(); return }
+  if(S.mine && S.mine.night===S.settings.night){ S.loc=S.mine.loc; go("ticket"); refresh(); poll(5000); return }
+  render();
+})();
+</script>
+</body>
+</html>
