@@ -107,7 +107,7 @@ const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){re
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g,"");
 const LIB = SONGS.map(([a,t],i)=>({i,a,t,k:norm(t+" "+a),ks:norm(t).replace(/^the /,""),ka:norm(a).replace(/^the /,"")}));
 const songKey = (s,a) => norm(s+" "+a).replace(/ /g,"");
-const takenSet = () => new Set(S.entries.map(e=>songKey(e.song,e.artist)));
+const takenSet = () => new Set(S.entries.filter(e=>e.status!=="skipped").map(e=>songKey(e.song,e.artist)));
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
 let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
 
@@ -328,6 +328,7 @@ function vHost(){
   return `${hostBar(" · "+VENUES[S.hostLoc].name)}
   <div><h2>${nightLabel()}</h2><p class="muted" style="font-variant-numeric:tabular-nums">${S.night?`${all.length} sign-ups · ${act.length} in line · ${sang} sang${sk?` · ${sk} skipped`:""}`:'<span class="spin"></span> Loading the list…'}</p></div>
   <div class="row"><button class="btn small ghost" id="sw">Switch location</button></div>
+  ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${act.length?`<ol class="q">${act.map((r,i)=>item(r,i,act.length)).join("")}</ol>`:S.night?`<div class="empty">${all.length?"Everyone in line has had a turn.":"No one's signed up yet tonight."} New sign-ups show up here in order.</div>`:""}
   ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">·</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
@@ -337,8 +338,9 @@ bind.host=()=>{
   bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
   $$("[data-a]").forEach(b=>b.onclick=async()=>{
     $$("[data-a]").forEach(x=>x.disabled=true);
+    S.actionErr="";
     try{ const r=await api("host",{body:{token:S.token,loc:S.hostLoc,id:b.dataset.id,action:b.dataset.a}}); S.entries=r.entries; S.lastErr="" }
-    catch(e){ if(e.status===401){logout();return} S.lastErr=e.error }
+    catch(e){ if(e.status===401){logout();return} S.actionErr=e.error }
     render();
   });
 };

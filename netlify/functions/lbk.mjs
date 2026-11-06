@@ -124,7 +124,7 @@ export default async (req) => {
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full. See the host at the stage.", status: 409 };
         const key = songKey(song, artist);
-        const taken = d.entries.find((e) => songKey(e.song, e.artist) === key);
+        const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
         if (taken) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
         const mine = d.entries.find((e) => e.device === device && e.status === "waiting");
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
@@ -180,7 +180,10 @@ export default async (req) => {
         const stamp = { by: me.name, doneAt: new Date().toISOString() };
         if (body.action === "done") Object.assign(e, { status: "done" }, stamp);
         else if (body.action === "skip") Object.assign(e, { status: "skipped" }, stamp);
-        else if (body.action === "back") { e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
+        else if (body.action === "back") {
+          const k = songKey(e.song, e.artist);
+          const other = d.entries.find((x) => x.id !== e.id && x.status !== "skipped" && songKey(x.song, x.artist) === k);
+          if (other) return { __error: other.name + " picked " + e.song + " after the skip, so it can't go back in line. Ask " + e.name + " to pick another song.", status: 409 }; e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "up" || body.action === "down") {
           const i = act.findIndex((x) => x.id === e.id), j = body.action === "up" ? i - 1 : i + 1;
