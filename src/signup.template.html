@@ -56,6 +56,8 @@ button{cursor:pointer}
 .list{list-style:none;margin:0;padding:0}
 .list li button{width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 2px;display:flex;flex-direction:column;gap:1px}
 .list li button:hover .t{color:var(--gold)}
+.list li button.taken{cursor:default;opacity:.5}
+.list li button.taken:hover .t{color:inherit}
 .t{font-weight:700;font-size:1.05rem}
 .a{color:var(--muted);font-size:.92rem}
 .letter{font-family:var(--display);font-size:1.3rem;color:var(--orange);padding:16px 2px 4px;border-bottom:1px solid var(--line)}
@@ -104,6 +106,8 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt
 const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}, set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
 const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g,"");
 const LIB = SONGS.map(([a,t],i)=>({i,a,t,k:norm(t+" "+a),ks:norm(t).replace(/^the /,""),ka:norm(a).replace(/^the /,"")}));
+const songKey = (s,a) => norm(s+" "+a).replace(/ /g,"");
+const takenSet = () => new Set(S.entries.map(e=>songKey(e.song,e.artist)));
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
 let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
 
@@ -127,6 +131,7 @@ async function refresh(){
   if(!loc) return;
   try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.lastErr=""; }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
+  else if(S.view==="songs" && $("#list")) drawList();
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh() });
 
@@ -182,17 +187,18 @@ function vSongs(){
   return `<div class="topbar"><span class="pill">${VENUES[S.loc].name} · tonight</span><button class="linkbtn" id="back">Change location</button></div>
   <h2>Find <span class="grad">your song</span></h2>
   <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
-  <div class="row" style="justify-content:space-between;align-items:center"><div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div><span class="count" id="count"></span></div></div>
+  <div class="row" style="justify-content:space-between;align-items:center"><div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div><span class="count" id="count"></span></div><p class="muted" style="font-size:.9rem">Each song can only be sung once a night. Songs already picked show as taken.</p></div>
   <ul class="list" id="list"></ul>`;
 }
 bind.songs = ()=>{
-  $("#back").onclick=()=>go("venues");
+  $("#back").onclick=()=>{poll(0);go("venues")};
   const q=$("#q"); q.oninput=()=>{S.q=q.value;drawList()};
+  refresh(); poll(15000);
   $$(".seg button").forEach(b=>b.onclick=()=>{S.by=b.dataset.by;render()});
   drawList();
 };
 function drawList(){
-  const w=norm(S.q).split(" ").filter(Boolean), key=S.by==="song"?"ks":"ka";
+  const w=norm(S.q).split(" ").filter(Boolean), key=S.by==="song"?"ks":"ka", taken=takenSet();
   const rows=LIB.filter(r=>w.every(x=>r.k.includes(x))).sort((x,y)=>x[key].localeCompare(y[key])||x.ks.localeCompare(y.ks));
   $("#count").textContent=rows.length.toLocaleString()+" songs";
   let html="",cur="";
@@ -200,7 +206,9 @@ function drawList(){
     const L=/[a-z]/.test(r[key][0])?r[key][0].toUpperCase():"#";
     if(!w.length&&L!==cur){html+=`<li class="letter" aria-hidden="true">${L}</li>`;cur=L}
     const a=S.by==="song"?r.t:r.a, b=S.by==="song"?r.a:r.t;
-    html+=`<li><button data-i="${r.i}"><span class="t">${esc(a)}</span><span class="a">${esc(b)}</span></button></li>`;
+    const gone=taken.has(songKey(r.t,r.a));
+    html+=gone?`<li><button class="taken" disabled aria-disabled="true"><span class="t">${esc(a)} <span class="tag skip">Taken tonight</span></span><span class="a">${esc(b)}</span></button></li>`
+              :`<li><button data-i="${r.i}"><span class="t">${esc(a)}</span><span class="a">${esc(b)}</span></button></li>`;
   });
   if(rows.length>500) html+=`<li class="muted" style="padding:14px 2px">Showing 500 of ${rows.length.toLocaleString()}. Search to narrow it down.</li>`;
   if(!rows.length) html=`<li class="empty">No match for “${esc(S.q)}”. Try fewer words, or just the artist.</li>`;
@@ -223,6 +231,7 @@ function openSignup(r){
       store.set("lbk-name",name); S.mine={id:res.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine);
       el.remove(); go("ticket"); refresh(); poll(5000);
     }catch(err){
+      if(err.taken){ refresh() }
       if(err.id){ S.mine={id:err.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine) }
       $("#err").innerHTML=esc(err.error)+(err.id?` <button type="button" class="linkbtn" id="see">See my spot</button>`:"");
       const s=$("#see"); if(s) s.onclick=()=>{el.remove();go("ticket");refresh();poll(5000)};

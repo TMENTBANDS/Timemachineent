@@ -32,6 +32,8 @@ function distM(a, b, c, d) {
 }
 const scrypt = (pin, salt) => crypto.scryptSync(String(pin), Buffer.from(salt, "hex"), 32).toString("hex");
 const safeEq = (a, b) => a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+// Same song = same title + artist, ignoring case, accents and punctuation.
+const songKey = (song, artist) => (String(song) + "|" + String(artist)).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9|]/g, "");
 const clean = (s, n) => String(s ?? "").replace(/[\u0000-\u001f<>]/g, "").trim().slice(0, n);
 
 // Read-modify-write with an etag check so two phones never overwrite each other.
@@ -121,13 +123,16 @@ export default async (req) => {
       }
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full. See the host at the stage.", status: 409 };
+        const key = songKey(song, artist);
+        const taken = d.entries.find((e) => songKey(e.song, e.artist) === key);
+        if (taken) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
         const mine = d.entries.find((e) => e.device === device && e.status === "waiting");
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
         const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", pos: Date.now(), at: new Date().toISOString(), device };
         d.entries.push(e);
         return { ok: true, id: e.id };
       });
-      if (out.__error) return json({ error: out.__error, id: out.id }, out.status || 400);
+      if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken }, out.status || 400);
       return json(out);
     }
     if (route === "login" && req.method === "POST") {
