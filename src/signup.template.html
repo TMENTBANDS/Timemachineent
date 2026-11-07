@@ -72,6 +72,9 @@ button{cursor:pointer}
 .ticket{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:10px;text-align:center}
 .ticket .num{font-family:var(--display);font-size:clamp(3.2rem,16vw,5rem);line-height:1;font-variant-numeric:tabular-nums}
 .ticket .song{font-weight:800;font-size:1.2rem}
+.tip{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.tip b{font-size:1.25rem}
+.tip .linkbtn{align-self:flex-start;padding:2px 0}
 .q{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .q li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;grid-template-columns:2.4rem 1fr;gap:3px 10px}
 .q li.now{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange) inset}
@@ -100,6 +103,21 @@ const VENUES = {
   frisco:{name:"Sidecar Frisco", addr:"6770 Winning Dr, Frisco", lat:33.1077444, lng:-96.8270188}
 };
 const API = "/api/lbk/";
+// Rotating tips on the waiting screen. Edit this list to change them.
+const TIPS = [
+  {h:"Know your song", b:"Pick one you can sing along to without reading every word."},
+  {h:"Eyes up", b:"The lyrics are on the screen, but the crowd is out front. Sing to them."},
+  {h:"Mic at your chin", b:"Hold it close and keep your hand off the top so the sound stays clear."},
+  {h:"It's a live band", b:"Listen for the intro. The host will cue you in, so relax and enjoy it."},
+  {h:"Bring the energy", b:"Move, dance, have fun. The crowd gives back what you give them."},
+  {h:"Stay close", b:"When you're 3rd in line, head toward the stage so the show keeps rolling."},
+  {h:"Cheer them on", b:"Clap for every singer. Everyone's a rock star tonight."}
+];
+const TIP_MS = 120000; // new tip every 2 minutes
+let tipIx = Math.floor(Math.random()*TIPS.length), tipTimer=null;
+const tipCard = () => `<div class="tip" id="tip" aria-live="polite"><span class="eyebrow">Showstopper tip ${tipIx+1} of ${TIPS.length}</span><b>${esc(TIPS[tipIx].h)}</b><p class="muted">${esc(TIPS[tipIx].b)}</p><button class="linkbtn" id="nexttip">Next tip →</button></div>`;
+function showTip(step){ tipIx=(tipIx+step+TIPS.length)%TIPS.length; const el=$("#tip"); if(el){ el.outerHTML=tipCard(); $("#nexttip").onclick=()=>{showTip(1); startTips()} } }
+function startTips(){ clearInterval(tipTimer); tipTimer=setInterval(()=>{ if(S.view==="ticket") showTip(1); else { clearInterval(tipTimer); tipTimer=null } }, TIP_MS) }
 const SET_TIMES = {1:"8:30–9:30", 2:"10:00–11:00", 3:"11:30–12:30"};
 // Place within a set: the first 12 (not counting skips) are singers, the rest are backups.
 function placeOf(e){
@@ -290,10 +308,11 @@ function vTicket(){
   return `${brand}<span class="eyebrow">${eyebrow}</span>
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
-  ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`}
+  ${me&&me.status==="waiting"?tipCard():""}
+  ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:(me&&me.status==="waiting"&&ix>2?"":`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`)}
   ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}`;
 }
-bind.ticket=()=>{ $("#more").onclick=()=>{poll(0);go("songs")} };
+bind.ticket=()=>{ const nt=$("#nexttip"); if(nt) nt.onclick=()=>{showTip(1); startTips()}; if(!tipTimer) startTips(); $("#more").onclick=()=>{poll(0);go("songs")} };
 
 // ---------------- hosts ----------------
 async function openLogin(){
