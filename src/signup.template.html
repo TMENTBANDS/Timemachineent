@@ -175,7 +175,8 @@ async function refresh(){
   if(hostExpired()){ autoLogout(); return }
   const loc = S.view==="host" ? S.hostLoc : S.loc;
   if(!loc) return;
-  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr=""; }catch(e){ S.lastErr=e.error }
+  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr="";
+    if(S.view==="host"&&S.me&&r.host&&r.host.id!==S.me.id){ kicked(r.host.name); return } }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
   else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); const mb=$("#minebox"); if(mb){ mb.outerHTML=mineBox(); bindMine() } }
 }
@@ -212,7 +213,7 @@ function vVenues(){
 }
 bind.venues = ()=>{
   $$(".venue").forEach(b=>b.onclick=()=>checkLoc(b.dataset.loc));
-  $("#hostlink").onclick=()=>{ if(S.token){ go(S.hostLoc?"host":"hostloc"); startHost(); } else openLogin(); };
+  $("#hostlink").onclick=()=>{ if(S.token){ if(S.hostLoc) enterLoc(S.hostLoc); else go("hostloc"); } else openLogin(); };
   const m=$("#myspot"); if(m) m.onclick=()=>{S.loc=S.mine.loc; go("ticket"); refresh(); poll(5000)};
 };
 function geoBox(html,cls){ $("#geo").innerHTML=`<div class="status ${cls||""}">${html}</div>` }
@@ -562,11 +563,39 @@ bind.setup=()=>{
 };
 function hostBar(extra){ return `<div class="topbar"><span class="eyebrow">${esc(S.me.name)}${extra||""}</span><span class="row" style="gap:14px">${S.me.admin&&S.view!=="manage"?`<button class="linkbtn" id="mng">Manage hosts</button>`:""}<button class="linkbtn" id="out">Log out</button></span></div>` }
 function bindBar(){ $("#out").onclick=logout; const m=$("#mng"); if(m) m.onclick=()=>openManage() }
-function logout(){ clearTimeout(logoutTimer); S.hostExp=null; S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbk-hostloc",null); S.hostLoc=null; poll(0); go("venues") }
+function logout(){ if(S.token){ const tk=S.token; fetch(API+"release",{method:"POST",headers:{"content-type":"application/json","x-host-token":tk},body:JSON.stringify({token:tk})}).catch(()=>{}) } clearTimeout(logoutTimer); S.hostExp=null; S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbk-hostloc",null); S.hostLoc=null; poll(0); go("venues") }
 function vHostLoc(){
-  return `${hostBar()}<h1>Where are you <span>hosting?</span></h1><p class="muted">${nightLabel()}</p><div class="venues">${venueButtons()}</div>`;
+  return `${hostBar()}${noticeBox()}<h1>Where are you <span>hosting?</span></h1><p class="muted">${nightLabel()}</p><div class="venues">${venueButtons()}</div>`;
 }
-bind.hostloc=()=>{ bindBar(); $$(".venue").forEach(b=>b.onclick=()=>{S.hostLoc=b.dataset.loc;store.set("lbk-hostloc",S.hostLoc);S.entries=[];S.night=null;go("host");startHost()}) };
+bind.hostloc=()=>{ bindBar(); $$(".venue").forEach(b=>b.onclick=()=>enterLoc(b.dataset.loc)) };
+// Only one host runs a location at a time. Picking a location claims it; if someone else has it, offer to take over.
+async function enterLoc(loc,takeover){
+  try{
+    const r=await api("claim",{body:{token:S.token,loc,takeover:!!takeover}});
+    S.hostLoc=loc; store.set("lbk-hostloc",loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.actionErr="";
+    go("host"); startHost();
+  }catch(e){
+    if(e.status===401){ logout(); return }
+    if(e.busy){
+      S.hostLoc=null; store.set("lbk-hostloc",null); poll(0); if(S.view!=="hostloc") go("hostloc");
+      const where=VENUES[loc].name;
+      const el=sheet(`<form id="to"><span class="eyebrow">${esc(where)}</span>
+        <p style="font-size:1.1rem"><b>${esc(e.busy)}</b> is already hosting ${esc(where)} tonight.</p>
+        <p class="muted">Only one host can run a location at a time. Taking over switches ${esc(e.busy)} out of ${esc(where)}.</p>
+        <button class="btn" id="togo">Take over</button>
+        <button type="button" class="btn ghost" id="cx">Pick another location</button></form>`);
+      $("#cx").onclick=()=>el.remove();
+      $("#to").onsubmit=ev=>{ ev.preventDefault(); el.remove(); enterLoc(loc,true) };
+      return;
+    }
+    S.actionErr=e.error; render();
+  }
+}
+function kicked(by){
+  const where=S.hostLoc?VENUES[S.hostLoc].name:"this location";
+  poll(0); S.hostLoc=null; store.set("lbk-hostloc",null); S.actionErr="";
+  S.notice=`${by||"Another host"} took over hosting ${where}. Pick a location to keep hosting.`; go("hostloc");
+}
 function nightLabel(){ const n=S.night||S.settings?.night; return n?new Date(n+"T12:00:00").toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"}):"" }
 function startHost(){ refresh(); poll(3000) }
 function vHost(){
@@ -627,7 +656,7 @@ function openClear(){
   $("#cx").onclick=()=>el.remove(); setTimeout(()=>{const p=$("#cqpin"); if(p) p.focus()},60);
   $("#cq").onsubmit=async e=>{ e.preventDefault(); $("#cqgo").disabled=true;
     try{ const r=await api("clear",{body:{token:S.token,loc:S.hostLoc,pin:$("#cqpin").value}}); S.entries=r.entries; S.sheet=r.sheet; S.night=r.night; el.remove(); S.actionErr=""; render() }
-    catch(err){ if(err.status===401&&/log in/i.test(err.error||"")){ el.remove(); logout(); return } $("#cqerr").textContent=err.error; $("#cqpin").value=""; $("#cqgo").disabled=false; $("#cqpin").focus() } };
+    catch(err){ if(err.status===401&&/log in/i.test(err.error||"")){ el.remove(); logout(); return } if(err.kicked){ el.remove(); kicked(err.by); return } $("#cqerr").textContent=err.error; $("#cqpin").value=""; $("#cqgo").disabled=false; $("#cqpin").focus() } };
 }
 bind.host=()=>{
   const cq=$("#clearq"); if(cq) cq.onclick=openClear;
@@ -635,7 +664,7 @@ bind.host=()=>{
   const run=async(path,body,btn)=>{
     $$("[data-a],[data-sheet]").forEach(x=>x.disabled=true); S.actionErr="";
     try{ const r=await api(path,{body:{token:S.token,loc:S.hostLoc,...body}}); S.entries=r.entries; S.sheet=r.sheet; S.lastErr="" }
-    catch(e){ if(e.status===401){logout();return} S.actionErr=e.error }
+    catch(e){ if(e.status===401){logout();return} if(e.kicked){ kicked(e.by); return } S.actionErr=e.error }
     render();
   };
   $$("[data-a]").forEach(b=>b.onclick=()=>run("host",{id:b.dataset.id,action:b.dataset.a,cash:b.dataset.cash==="1"}));
@@ -710,7 +739,7 @@ bind.manage=()=>{
   $("#pf").onsubmit=async e=>{ e.preventDefault(); $("#psv").disabled=true;
     try{ const r=await admin({op:"payments",cashtag:$("#ct").value.trim(),venmo:$("#vm").value.trim(),fee:$("#fee").value,repeatFee:$("#rfee").value}); S.adminPay=r.payments; await reloadSettings(); render(); $("#perr2").textContent="Saved." }
     catch(err){ $("#perr2").textContent=err.error; $("#psv").disabled=false } };
-  $("#bk").onclick=()=>{ go(S.hostLoc?"host":"hostloc"); if(S.hostLoc) startHost() };
+  $("#bk").onclick=()=>{ if(S.hostLoc) enterLoc(S.hostLoc); else go("hostloc") };
   $("#tm").onclick=async()=>{ $("#tm").disabled=true; const on=!S.settings.testMode; try{ await admin({op:"testMode",on}); S.settings.testMode=on }catch(e){} render() };
   $("#af").onsubmit=async e=>{ e.preventDefault(); $("#ago").disabled=true;
     try{ const n=$("#an").value.trim(); await admin({op:"add",name:n,pin:$("#ap").value.trim()}); render(); $("#aerr").textContent=n+" added." }
@@ -730,7 +759,7 @@ bind.manage=()=>{
   S.hostExp=store.get("lbk-host")?.expiresAt||null;
   if(hostExpired()){ logout(); S.notice="Hosts are logged out automatically at 1:00 am. Log in again next show." }
   if(S.token){ try{ const r=await api("me"); S.me=r.host; armLogout() }catch(e){ S.token=null; S.me=null; store.set("lbk-host",null) } }
-  if(location.hash==="#host"){ if(S.token){ S.view=S.hostLoc?"host":"hostloc"; render(); if(S.hostLoc) startHost(); } else openLogin(); return }
+  if(location.hash==="#host"){ if(S.token){ if(S.hostLoc){ S.view="hostloc"; render(); enterLoc(S.hostLoc) } else { S.view="hostloc"; render() } } else openLogin(); return }
   const back=new URLSearchParams(location.search);
   if(back.has("paid")){ history.replaceState(null,"",location.pathname);
     if(VENUES[back.get("loc")]){ S.mine={...(S.mine||{}),id:back.get("paid"),loc:back.get("loc"),night:S.settings.night}; store.set("lbk-mine",S.mine) } }

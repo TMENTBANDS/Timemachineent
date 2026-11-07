@@ -227,7 +227,14 @@ async function loadNight(cfg, loc, force) {
   return n;
 }
 const active = (e) => e.status === "waiting" || e.status === "pending";
-const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry) });
+const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry),
+  host: n.host ? { id: n.host.id, name: n.host.name } : null });
+// One host runs each location per night. Returns an error object if someone else holds it; claims it if nobody does.
+const holdLoc = (d, me) => {
+  if (d.host && d.host.id !== me.id) return { __error: d.host.name + " is hosting this location now. You've been switched out.", status: 409, kicked: true, by: d.host.name };
+  if (!d.host) d.host = { id: me.id, name: me.name, at: new Date().toISOString() };
+  return null;
+};
 
 // Sign a guest up for a song. Returns { out, name, song } or { error, status }.
 async function doSignup(cfg, body, opts) {
@@ -426,9 +433,29 @@ export default async (req) => {
     if (route === "me") return me ? json({ host: { id: me.id, name: me.name, admin: !!me.admin } }) : fail("Please log in again.", 401);
     if (!me) return fail("Please log in again.", 401);
 
+    // Pick a location to host. Only one host per location: another host can take over, which switches the first one out.
+    if (route === "claim" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        if (d.host && d.host.id !== me.id && !body.takeover) return { busy: d.host.name };
+        d.host = { id: me.id, name: me.name, at: new Date().toISOString(), tookOverFrom: d.host && d.host.id !== me.id ? d.host.name : undefined };
+        return { ok: true };
+      });
+      if (out.busy) return json({ busy: out.busy }, 409);
+      // Leaving another location you were hosting frees it.
+      for (const other of Object.keys(VENUES).filter((k) => k !== loc))
+        await update(nightPath(other), { entries: [] }, (d) => { if (d.host && d.host.id === me.id) delete d.host; return { ok: true }; });
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
+    if (route === "release" && req.method === "POST") {
+      for (const loc of Object.keys(VENUES))
+        await update(nightPath(loc), { entries: [] }, (d) => { if (d.host && d.host.id === me.id) delete d.host; return { ok: true }; });
+      return json({ ok: true });
+    }
     if (route === "host" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const held = holdLoc(d, me); if (held) return held;
         const e = d.entries.find((x) => x.id === body.id);
         const act = d.entries.filter((x) => x.status === "waiting" && e && entrySet(x) === entrySet(e)).sort((a, b) => a.pos - b.pos); // same set only
         if (!e) return { __error: "That sign-up isn't on the list anymore.", status: 404 };
@@ -471,7 +498,7 @@ export default async (req) => {
         } else return { __error: "Unknown action.", status: 400 };
         return { ok: true };
       });
-      if (out.__error) return fail(out.__error, out.status);
+      if (out.__error) return json({ error: out.__error, kicked: out.kicked, by: out.by }, out.status || 400);
       const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
       return json(nightView(n, cfg));
     }
@@ -491,17 +518,20 @@ export default async (req) => {
       if (chk.__error) return fail(chk.__error, chk.status);
       if (!pinOk) return fail("That PIN doesn't match. The list was not cleared.", 401);
       const at = new Date().toISOString();
-      await update(nightPath(loc), { entries: [] }, (d) => {
+      const cl = await update(nightPath(loc), { entries: [] }, (d) => {
+        const held = holdLoc(d, me); if (held) return held;
         d.cleared = [...(d.cleared || []), ...d.entries.map((e) => ({ ...e, clearedAt: at, clearedBy: me.name }))];
         d.entries = []; delete d.sheet; // start over at Set 1
         d.clears = [...(d.clears || []), { at, by: me.name }];
         return { ok: true };
       });
+      if (cl.__error) return json({ error: cl.__error, kicked: cl.kicked, by: cl.by }, cl.status);
       return json(nightView(await loadNight(cfg, loc), cfg));
     }
     if (route === "sheet" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const held = holdLoc(d, me); if (held) return held;
         const sh = sheetStatus(d, cfg);
         if (body.op === "openNext") { if (!sh.next) return { __error: "Set " + LAST_SET + " is the last set tonight.", status: 400 }; d.sheet = { set: sh.next, open: true }; }
         else if (body.op === "close") d.sheet = { set: sh.set, open: false };
@@ -509,7 +539,7 @@ export default async (req) => {
         else return { __error: "Unknown request.", status: 400 };
         return { ok: true };
       });
-      if (out.__error) return fail(out.__error, out.status);
+      if (out.__error) return json({ error: out.__error, kicked: out.kicked, by: out.by }, out.status || 400);
       const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
       return json(nightView(n, cfg));
     }
