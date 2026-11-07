@@ -301,13 +301,14 @@ function skipBlock(me,ix){
     <button class="btn" id="skipbtn">Skip to next · $${p.fee}</button></div>`;
 }
 function openSkip(me){
-  const p=pay(), note=encodeURIComponent(`Skip to next - ${me.name} - ${me.song}`);
+  const where=VENUES[S.loc].name.replace("Sidecar ",""), noteText=`${where} - ${me.name}`;
+  const p=pay(), note=encodeURIComponent(`Skip to next - ${where} - ${me.name} - ${me.song}`);
   const links=[];
   if(p.cashtag) links.push(`<a class="btn" data-m="cashapp" href="https://cash.app/$${encodeURIComponent(p.cashtag)}/${p.fee}" target="_blank" rel="noopener">Pay with Cash App</a>`);
   if(p.venmo) links.push(`<a class="btn" data-m="venmo" href="https://venmo.com/${encodeURIComponent(p.venmo)}?txn=pay&amount=${p.fee}&note=${note}" target="_blank" rel="noopener">Pay with Venmo</a>`);
   const el=sheet(`<form id="sk"><span class="eyebrow">Skip to next · $${p.fee}</span>
     <p>Tip the band $${p.fee} and you'll sing right after the current singer.</p>
-    <p class="muted">Put <b>${esc(me.name)}</b> in the payment note so the host can find it.${p.cashtag?` Cash App: <b>$${esc(p.cashtag)}</b>.`:""}${p.venmo?` Venmo: <b>@${esc(p.venmo)}</b>.`:""}</p>
+    <p class="muted">Put <b>${esc(noteText)}</b> in the payment note so the host can find it.${p.cashtag?` Cash App: <b>$${esc(p.cashtag)}</b>.`:""}${p.venmo?` Venmo: <b>@${esc(p.venmo)}</b>.`:""}</p>
     <div style="display:flex;flex-direction:column;gap:10px;text-align:center">${links.join("")}</div>
     <button type="button" class="btn ghost" id="paid" disabled>I've paid</button>
     <button type="button" class="linkbtn" id="cx">Never mind</button>
