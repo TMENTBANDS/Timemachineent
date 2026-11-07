@@ -230,7 +230,9 @@ const active = (e) => e.status === "waiting" || e.status === "pending";
 const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry),
   host: n.host ? { id: n.host.id, name: n.host.name } : null });
 // One host runs each location per night. Returns an error object if someone else holds it; claims it if nobody does.
+// Shonna (admin) can always be on a location alongside the host, so she is never blocked or switched out.
 const holdLoc = (d, me) => {
+  if (me.admin) return null;
   if (d.host && d.host.id !== me.id) return { __error: d.host.name + " is hosting this location now. You've been switched out.", status: 409, kicked: true, by: d.host.name };
   if (!d.host) d.host = { id: me.id, name: me.name, at: new Date().toISOString() };
   return null;
@@ -437,6 +439,7 @@ export default async (req) => {
     if (route === "claim" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        if (d.host && d.host.id !== me.id && me.admin) return { ok: true, joined: true }; // Shonna joins without bumping the host
         if (d.host && d.host.id !== me.id && !body.takeover) return { busy: d.host.name };
         d.host = { id: me.id, name: me.name, at: new Date().toISOString(), tookOverFrom: d.host && d.host.id !== me.id ? d.host.name : undefined };
         return { ok: true };

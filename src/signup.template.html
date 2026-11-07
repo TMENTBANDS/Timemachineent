@@ -176,7 +176,7 @@ async function refresh(){
   const loc = S.view==="host" ? S.hostLoc : S.loc;
   if(!loc) return;
   try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr="";
-    if(S.view==="host"&&S.me&&r.host&&r.host.id!==S.me.id){ kicked(r.host.name); return } }catch(e){ S.lastErr=e.error }
+    if(S.view==="host"&&S.me&&!S.me.admin&&r.host&&r.host.id!==S.me.id){ kicked(r.host.name); return } }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
   else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); const mb=$("#minebox"); if(mb){ mb.outerHTML=mineBox(); bindMine() } }
 }
