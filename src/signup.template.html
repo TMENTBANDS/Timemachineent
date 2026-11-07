@@ -105,13 +105,14 @@ const VENUES = {
 const API = "/api/lbk/";
 // Rotating tips on the waiting screen. Edit this list to change them.
 const TIPS = [
-  {h:"Know your song", b:"Pick one you can sing along to without reading every word."},
-  {h:"Eyes up", b:"The lyrics are on the screen, but the crowd is out front. Sing to them."},
-  {h:"Mic at your chin", b:"Hold it close and keep your hand off the top so the sound stays clear."},
-  {h:"It's a live band", b:"Listen for the intro. The host will cue you in, so relax and enjoy it."},
-  {h:"Bring the energy", b:"Move, dance, have fun. The crowd gives back what you give them."},
-  {h:"Stay close", b:"When you're 3rd in line, head toward the stage so the show keeps rolling."},
-  {h:"Cheer them on", b:"Clap for every singer. Everyone's a rock star tonight."}
+  {h:"Mic to your lips", b:"Hold it close so everyone can hear your uniquely beautiful voice."},
+  {h:"Don't point it at the floor", b:"Aim the mic at the monitor and you'll get feedback. Not the kind you want."},
+  {h:"If you can read, you can karaoke", b:"The words are on the screen. You've got this."},
+  {h:"Mic drops cost $1,000", b:"Paid before your performance, cash only. Just kidding. But seriously: no mic drops."},
+  {h:"This is a show", b:"We all love a ballad, but pick a song the crowd will enjoy too."},
+  {h:"Patience is a virtue", b:"Wait for your name to be called. Your moment is coming."},
+  {h:"No surprise guests", b:"Joining someone on stage uninvited? You'd better have choreography. Otherwise you're just a creepy shadow."},
+  {h:"Be the lyrical miracle", b:"Own the stage and leave it all out there."}
 ];
 const TIP_MS = 120000; // new tip every 2 minutes
 let tipIx = Math.floor(Math.random()*TIPS.length), tipTimer=null;
