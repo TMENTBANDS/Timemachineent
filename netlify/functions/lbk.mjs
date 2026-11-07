@@ -111,9 +111,12 @@ function sheetStatus(d, cfg) {
     next: sheet.set < LAST_SET ? sheet.set + 1 : null, nextAt: NEXT_SHEET_AT[sheet.set + 1] || null, auto: sheet.open === null };
 }
 const nightPath = (loc) => "night/" + loc + "/" + nightKey();
+// status "pending" = a $20 repeat-song sign-up waiting for a host to confirm the payment. It holds its spot but isn't in line yet.
 const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt,
-  jumped: !!e.jumped, skipReq: e.skipReq || null, skipDenied: !!e.skipDenied });
-const paymentsView = (cfg) => { const p = cfg.payments || {}; return { cashtag: p.cashtag || "", venmo: p.venmo || "", fee: p.fee || 50, on: !!(p.cashtag || p.venmo) }; };
+  jumped: !!e.jumped, skipReq: e.skipReq || null, skipDenied: !!e.skipDenied,
+  repeat: !!e.repeat, repeatReq: e.repeatReq || null, repeatPaid: !!e.repeatPaid, repeatDenied: !!e.repeatDenied, repeatFee: e.repeatFee || null });
+const paymentsView = (cfg) => { const p = cfg.payments || {}; return { cashtag: p.cashtag || "", venmo: p.venmo || "", fee: p.fee || 50, repeatFee: p.repeatFee || 20, on: !!(p.cashtag || p.venmo) }; };
+const active = (e) => e.status === "waiting" || e.status === "pending";
 const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry) });
 
 export default async (req) => {
@@ -149,6 +152,8 @@ export default async (req) => {
       if (!v) return fail("Pick a location first.");
       const name = clean(body.name, 30), song = clean(body.song, 120), artist = clean(body.artist, 120), device = clean(body.device, 64);
       if (!name || !song || !device) return fail("Add your name and pick a song.");
+      const repeat = !!body.repeat;
+      if (repeat && !paymentsView(cfg).on) return fail("Repeat songs aren't available right now. Please choose another song.");
       if (!cfg.testMode) {
         const lat = Number(body.lat), lng = Number(body.lng), acc = Math.min(Number(body.acc) || 0, 200);
         if (!isFinite(lat) || !isFinite(lng)) return fail("We need your location to confirm you're at " + v.name + ".", 403);
@@ -170,10 +175,13 @@ export default async (req) => {
           Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
         const key = songKey(song, artist);
         const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
-        if (taken) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
-        const mine = d.entries.find((e) => e.device === device && e.status === "waiting");
+        if (taken && !repeat) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
+        const mine = d.entries.find((e) => e.device === device && active(e));
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
         const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
+        // Guest says they tipped to sing a song that's already taken; a host checks Cash App / Venmo and confirms.
+        if (repeat) Object.assign(e, { status: "pending", repeat: true, repeatFee: paymentsView(cfg).repeatFee,
+          repeatReq: { method: body.method === "venmo" ? "Venmo" : "Cash App", at: new Date().toISOString() } });
         d.entries.push(e);
         return { ok: true, id: e.id, backup: sh.count >= SINGERS ? sh.count - SINGERS + 1 : 0 };
       });
@@ -259,6 +267,16 @@ export default async (req) => {
           delete e.skipReq; delete e.skipDenied;
         }
         else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
+        else if (body.action === "repeatok") {
+          if (e.status !== "pending") return { __error: "That repeat song was already handled.", status: 409 };
+          Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: (e.repeatReq && e.repeatReq.method) || "Not recorded", repeatAt: new Date().toISOString(), repeatBy: me.name });
+          delete e.repeatReq;
+        }
+        else if (body.action === "repeatno") {
+          if (e.status !== "pending") return { __error: "That repeat song was already handled.", status: 409 };
+          Object.assign(e, { status: "skipped", repeatDenied: true }, stamp, { by: me.name + " (payment not found)" });
+          delete e.repeatReq;
+        }
         else if (body.action === "up" || body.action === "down") {
           const i = act.findIndex((x) => x.id === e.id), j = body.action === "up" ? i - 1 : i + 1;
           if (i < 0 || !act[j]) return { ok: true };
@@ -296,10 +314,11 @@ export default async (req) => {
       if (body.op === "payments") {
         const cashtag = clean(body.cashtag, 30).replace(/^\$*/, ""), venmo = clean(body.venmo, 40).replace(/^@*/, "");
         const fee = Math.max(1, Math.min(500, Math.round(Number(body.fee) || 50)));
+        const repeatFee = Math.max(1, Math.min(500, Math.round(Number(body.repeatFee) || 20)));
         if (cashtag && !/^[A-Za-z0-9_-]+$/.test(cashtag)) return fail("That $cashtag has characters Cash App doesn't use.");
         if (venmo && !/^[A-Za-z0-9_-]+$/.test(venmo)) return fail("That Venmo username has characters Venmo doesn't use.");
-        await update("config", {}, (d) => { d.payments = { cashtag, venmo, fee }; return d; });
-        return json({ ok: true, payments: { cashtag, venmo, fee, on: !!(cashtag || venmo) } });
+        await update("config", {}, (d) => { d.payments = { cashtag, venmo, fee, repeatFee }; return d; });
+        return json({ ok: true, payments: { cashtag, venmo, fee, repeatFee, on: !!(cashtag || venmo) } });
       }
       if (body.op === "testMode") {
         await update("config", {}, (d) => { d.testMode = !!body.on; return d; });
