@@ -113,11 +113,153 @@ function sheetStatus(d, cfg) {
 const nightPath = (loc) => "night/" + loc + "/" + nightKey();
 // status "pending" = a $20 repeat-song sign-up waiting for a host to confirm the payment. It holds its spot but isn't in line yet.
 const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt,
-  jumped: !!e.jumped, skipReq: e.skipReq || null, skipDenied: !!e.skipDenied,
-  repeat: !!e.repeat, repeatReq: e.repeatReq || null, repeatPaid: !!e.repeatPaid, repeatDenied: !!e.repeatDenied, repeatFee: e.repeatFee || null });
-const paymentsView = (cfg) => { const p = cfg.payments || {}; return { cashtag: p.cashtag || "", venmo: p.venmo || "", fee: p.fee || 50, repeatFee: p.repeatFee || 20, on: !!(p.cashtag || p.venmo) }; };
+  jumped: !!e.jumped, skipReq: reqView(e.skipReq), skipDenied: !!e.skipDenied,
+  repeat: !!e.repeat, repeatReq: reqView(e.repeatReq), repeatPaid: !!e.repeatPaid, repeatDenied: !!e.repeatDenied, repeatFee: e.repeatFee || null,
+  payExpired: !!e.payExpired, payCancelled: !!e.payCancelled, payUrl: (sqOf(e) && sqOf(e).url) || null });
+const reqView = (q) => (q ? { method: q.method, at: q.at, square: !!q.sq } : null);
+const squareOn = (cfg) => !!(cfg.square && cfg.square.token && cfg.square.locationId);
+const paymentsView = (cfg) => { const p = cfg.payments || {}; const sqOn = squareOn(cfg);
+  return { cashtag: sqOn ? "" : p.cashtag || "", venmo: sqOn ? "" : p.venmo || "", fee: p.fee || 50, repeatFee: p.repeatFee || 20,
+    square: sqOn, squareName: sqOn ? cfg.square.locationName || "" : "", on: sqOn || !!(p.cashtag || p.venmo) }; };
+// Manage hosts needs the saved Cash App / Venmo even while Square is on.
+const paymentsAdminView = (cfg) => { const p = cfg.payments || {}; return { ...paymentsView(cfg), cashtag: p.cashtag || "", venmo: p.venmo || "" }; };
+
+// ---------- Square: guests pay by Cash App Pay, Apple Pay, Google Pay or card, and the site confirms it on its own ----------
+const SQ_VERSION = "2026-09-16";
+const SQ_HOSTS = { production: "https://connect.squareup.com", sandbox: "https://connect.squareupsandbox.com" };
+const SQ_EXPIRE_MS = 20 * 60e3; // an unfinished Square payment gives up its held spot after 20 minutes
+async function sqCall(square, method, path, body) {
+  const r = await fetch(SQ_HOSTS[square.env || "production"] + path, { method,
+    headers: { authorization: "Bearer " + square.token, "square-version": SQ_VERSION, "content-type": "application/json", accept: "application/json" },
+    body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = (j.errors && j.errors[0]) || {}; throw Object.assign(new Error(e.detail || e.code || "Square error " + r.status), { square: true, status: r.status }); }
+  return j;
+}
+// The Square checkout waiting on this entry, if any: a pending repeat song, or a skip request.
+function sqOf(e) {
+  if (e.status === "pending" && e.repeatReq && e.repeatReq.sq) return e.repeatReq.sq;
+  if (e.status === "waiting" && !e.jumped && e.skipReq && e.skipReq.sq) return e.skipReq.sq;
+  return null;
+}
+async function createLink(cfg, { entryId, kind, fee, name, song, loc, origin }) {
+  const what = kind === "skip" ? "Skip to next" : "Repeat song", where = VENUES[loc].name;
+  const j = await sqCall(cfg.square, "POST", "/v2/online-checkout/payment-links", {
+    idempotency_key: kind + "-" + entryId + "-" + crypto.randomBytes(6).toString("hex"),
+    quick_pay: { name: what + " - " + where, price_money: { amount: Math.round(fee * 100), currency: cfg.square.currency || "USD" }, location_id: cfg.square.locationId },
+    checkout_options: { redirect_url: origin + "/signup?paid=" + encodeURIComponent(entryId) + "&loc=" + loc, allow_tipping: false, ask_for_shipping_address: false,
+      accepted_payment_methods: { apple_pay: true, google_pay: true, cash_app_pay: true, afterpay_clearpay: false } },
+    payment_note: (what + " - " + where.replace("Sidecar ", "") + " - " + name + " - " + song).slice(0, 500),
+  });
+  const pl = j.payment_link || {};
+  if (!pl.url || !pl.order_id) throw new Error("Square didn't return a payment page.");
+  return { orderId: pl.order_id, linkId: pl.id, url: pl.url, fee, at: new Date().toISOString() };
+}
+// Paid = the order has tenders covering the price and the payment is COMPLETED.
+async function checkPaid(cfg, s) {
+  const { order } = await sqCall(cfg.square, "GET", "/v2/orders/" + encodeURIComponent(s.orderId));
+  const tenders = (order && order.tenders) || [];
+  const got = tenders.reduce((n, t) => n + ((t.amount_money && t.amount_money.amount) || 0), 0);
+  if (!tenders.length || got < Math.round(s.fee * 100)) return { paid: false };
+  const pid = tenders.map((t) => t.payment_id || t.id).find(Boolean);
+  let via = "Square";
+  if (pid) {
+    const { payment } = await sqCall(cfg.square, "GET", "/v2/payments/" + encodeURIComponent(pid));
+    if (!payment || payment.status !== "COMPLETED") return { paid: false };
+    const brand = payment.wallet_details && payment.wallet_details.brand;
+    via = brand === "CASH_APP" ? "Square (Cash App Pay)" : payment.source_type === "CARD" ? "Square (card)" : payment.source_type ? "Square (" + String(payment.source_type).toLowerCase().replace(/_/g, " ") + ")" : "Square";
+  }
+  return { paid: true, via, paymentId: pid || null };
+}
+// Move a paid skip right after whoever is singing now (after any earlier paid skips), in the set that's on stage.
+function doJump(d, e, byName, via, fee) {
+  const line = d.entries.filter((x) => x.status === "waiting" && x.id !== e.id).sort((a, b) => (entrySet(a) - entrySet(b)) || (a.pos - b.pos));
+  if (line.length) {
+    const cur = line[0], s = entrySet(cur), inSet = line.filter((x) => entrySet(x) === s);
+    let anchor = cur; for (const x of inSet.slice(1)) { if (x.jumped) anchor = x; else break; }
+    const nxt = inSet[inSet.indexOf(anchor) + 1];
+    e.set = s; e.pos = nxt ? (anchor.pos + nxt.pos) / 2 : anchor.pos + 1;
+  }
+  Object.assign(e, { jumped: true, jumpedBy: byName, paidVia: via, paidAt: new Date().toISOString(), paidFee: fee });
+  delete e.skipReq; delete e.skipDenied;
+}
+// Check Square for any unfinished payments in tonight's list and apply the ones that went through.
+async function verifySquare(cfg, loc, n, force) {
+  if (!squareOn(cfg) || !n) return false;
+  const now = Date.now();
+  const due = n.entries.filter((e) => { const s = sqOf(e); return s && (force === e.id || !s.checkedAt || now - Date.parse(s.checkedAt) > 4000); }).slice(0, 6);
+  if (!due.length) return false;
+  const results = {};
+  await Promise.all(due.map(async (e) => { try { results[e.id] = await checkPaid(cfg, sqOf(e)); } catch (err) { console.error("square check", err.message); results[e.id] = { error: true }; } }));
+  await update(nightPath(loc), { entries: [] }, (d) => {
+    for (const e of d.entries) {
+      const res = results[e.id], s = res && sqOf(e);
+      if (!s || s.orderId !== sqOf(due.find((x) => x.id === e.id)).orderId) continue;
+      s.checkedAt = new Date().toISOString();
+      const repeat = e.status === "pending";
+      if (res.paid) {
+        if (repeat) { Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: res.via, repeatAt: new Date().toISOString(), repeatBy: "Square", repeatFee: s.fee, squarePaymentId: res.paymentId }); delete e.repeatReq; }
+        else { doJump(d, e, "Square", res.via, s.fee); e.squarePaymentId = res.paymentId; }
+      } else if (!res.error && Date.now() - Date.parse(s.at) > SQ_EXPIRE_MS) {
+        if (repeat) { Object.assign(e, { status: "skipped", payExpired: true, by: "Payment not finished", doneAt: new Date().toISOString() }); delete e.repeatReq; }
+        else delete e.skipReq;
+      }
+    }
+    return { ok: true };
+  });
+  return true;
+}
+async function loadNight(cfg, loc, force) {
+  let n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
+  if (await verifySquare(cfg, loc, n, force)) n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
+  return n;
+}
 const active = (e) => e.status === "waiting" || e.status === "pending";
 const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry) });
+
+// Sign a guest up for a song. Returns { out, name, song } or { error, status }.
+async function doSignup(cfg, body, opts) {
+  const bad = (msg, status = 400) => ({ error: { error: msg }, status });
+  const loc = body.loc, v = VENUES[loc];
+  if (!v) return bad("Pick a location first.");
+  const name = clean(body.name, 30), song = clean(body.song, 120), artist = clean(body.artist, 120), device = clean(body.device, 64);
+  if (!name || !song || !device) return bad("Add your name and pick a song.");
+  const repeat = !!opts.repeat;
+  if (repeat && !paymentsView(cfg).on) return bad("Repeat songs aren't available right now. Please choose another song.");
+  if (!cfg.testMode) {
+    const lat = Number(body.lat), lng = Number(body.lng), acc = Math.min(Number(body.acc) || 0, 200);
+    if (!isFinite(lat) || !isFinite(lng)) return bad("We need your location to confirm you're at " + v.name + ".", 403);
+    if (distM(lat, lng, v.lat, v.lng) > RADIUS_M + acc) return bad("Sign-ups only work from inside " + v.name + ".", 403);
+  }
+  const out = await update(nightPath(loc), { entries: [] }, (d) => {
+    if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full. See the host at the stage.", status: 409 };
+    const sh = sheetStatus(d, cfg);
+    if (!sh.accepting) {
+      let msg;
+      if (sh.set === 1 && sh.auto && !sh.open) msg = "Sign-ups for Set 1 open at 8:15 pm.";
+      else if (sh.next) msg = "Set " + sh.set + " is full. The Set " + sh.next + " sign-up opens around " + sh.nextAt + ".";
+      else msg = "Tonight's sign-ups are full. Thanks for coming out!";
+      return { __error: msg, status: 409, closed: true };
+    }
+    // A backup from an earlier set who didn't get called can sign up again for the current set.
+    const isBackup = (e) => !e.jumped && d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped" && !x.jumped).sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
+    for (const old of d.entries.filter((e) => e.device === device && e.status === "waiting" && entrySet(e) < sh.set && isBackup(e)))
+      Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
+    const key = songKey(song, artist);
+    const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
+    if (taken && !repeat) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
+    const mine = d.entries.find((e) => e.device === device && active(e));
+    if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
+    const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
+    // Repeat song: the spot is held as pending until the payment is confirmed (by Square, or by a host checking Cash App / Venmo).
+    if (repeat) Object.assign(e, { status: "pending", repeat: true, repeatFee: paymentsView(cfg).repeatFee,
+      repeatReq: { method: opts.method, at: new Date().toISOString() } });
+    d.entries.push(e);
+    return { ok: true, id: e.id, backup: sh.count >= SINGERS ? sh.count - SINGERS + 1 : 0 };
+  });
+  if (out.__error) return { error: { error: out.__error, id: out.id, taken: out.taken, closed: out.closed }, status: out.status || 400 };
+  return { out, name, song };
+}
 
 export default async (req) => {
   const url = new URL(req.url);
@@ -144,54 +286,71 @@ export default async (req) => {
     if (route === "queue" && req.method === "GET") {
       const loc = url.searchParams.get("loc");
       if (!VENUES[loc]) return fail("Unknown location.");
-      const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
-      return json(nightView(n, cfg));
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
+    // Guest is back from the Square payment page (or tapped "check again"): check right away.
+    if (route === "paycheck" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      return json(nightView(await loadNight(cfg, loc, String(body.id || "")), cfg));
+    }
+    // Guest gives up on an unfinished Square payment.
+    if (route === "paycancel" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      const device = clean(body.device, 64);
+      await update(nightPath(loc), { entries: [] }, (d) => {
+        const e = d.entries.find((x) => x.id === body.id && x.device === device);
+        if (!e || !sqOf(e)) return { ok: true };
+        if (e.status === "pending") { Object.assign(e, { status: "skipped", payCancelled: true, by: "Cancelled by guest", doneAt: new Date().toISOString() }); delete e.repeatReq; }
+        else delete e.skipReq;
+        return { ok: true };
+      });
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
+    // Start a Square payment for a paid skip or a repeat song. Returns the Square payment page to send the guest to.
+    if (route === "checkout" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      if (!squareOn(cfg)) return fail("Payments aren't set up right now. See the host at the stage.");
+      const origin = url.origin, pv = paymentsView(cfg);
+      if (body.kind === "skip") {
+        const device = clean(body.device, 64);
+        const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
+        const e = n.entries.find((x) => x.id === body.id && x.device === device);
+        if (!e || e.status !== "waiting") return fail("We couldn't find your spot in line.", 404);
+        if (e.jumped) return fail("You're already skipping to next.", 409);
+        const open = sqOf(e); if (open && Date.now() - Date.parse(open.at) < SQ_EXPIRE_MS - 60e3) return json({ url: open.url, id: e.id });
+        let link; try { link = await createLink(cfg, { entryId: e.id, kind: "skip", fee: pv.fee, name: e.name, song: e.song, loc, origin }); }
+        catch (err) { console.error("square link", err.message); return fail("Square couldn't start the payment. Try again, or see the host at the stage.", 502); }
+        const out = await update(nightPath(loc), { entries: [] }, (d) => {
+          const x = d.entries.find((y) => y.id === e.id);
+          if (!x || x.status !== "waiting" || x.jumped) return { __error: "We couldn't find your spot in line.", status: 404 };
+          x.skipReq = { method: "Square", at: link.at, sq: link }; delete x.skipDenied; return { ok: true };
+        });
+        if (out.__error) return fail(out.__error, out.status);
+        return json({ url: link.url, id: e.id });
+      }
+      if (body.kind === "repeat") {
+        const res = await doSignup(cfg, body, { repeat: true, method: "Square" });
+        if (res.error) return json(res.error, res.status);
+        let link; try { link = await createLink(cfg, { entryId: res.out.id, kind: "repeat", fee: pv.repeatFee, name: res.name, song: res.song, loc, origin }); }
+        catch (err) { console.error("square link", err.message);
+          await update(nightPath(loc), { entries: [] }, (d) => { d.entries = d.entries.filter((x) => x.id !== res.out.id); return { ok: true }; });
+          return fail("Square couldn't start the payment. Try again, or see the host at the stage.", 502); }
+        await update(nightPath(loc), { entries: [] }, (d) => { const x = d.entries.find((y) => y.id === res.out.id); if (x && x.repeatReq) x.repeatReq.sq = link; return { ok: true }; });
+        return json({ url: link.url, id: res.out.id });
+      }
+      return fail("Unknown payment.");
     }
     if (route === "signup" && req.method === "POST") {
-      const loc = body.loc, v = VENUES[loc];
-      if (!v) return fail("Pick a location first.");
-      const name = clean(body.name, 30), song = clean(body.song, 120), artist = clean(body.artist, 120), device = clean(body.device, 64);
-      if (!name || !song || !device) return fail("Add your name and pick a song.");
-      const repeat = !!body.repeat;
-      if (repeat && !paymentsView(cfg).on) return fail("Repeat songs aren't available right now. Please choose another song.");
-      if (!cfg.testMode) {
-        const lat = Number(body.lat), lng = Number(body.lng), acc = Math.min(Number(body.acc) || 0, 200);
-        if (!isFinite(lat) || !isFinite(lng)) return fail("We need your location to confirm you're at " + v.name + ".", 403);
-        if (distM(lat, lng, v.lat, v.lng) > RADIUS_M + acc) return fail("Sign-ups only work from inside " + v.name + ".", 403);
-      }
-      const out = await update(nightPath(loc), { entries: [] }, (d) => {
-        if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full. See the host at the stage.", status: 409 };
-        const sh = sheetStatus(d, cfg);
-        if (!sh.accepting) {
-          let msg;
-          if (sh.set === 1 && sh.auto && !sh.open) msg = "Sign-ups for Set 1 open at 8:15 pm.";
-          else if (sh.next) msg = "Set " + sh.set + " is full. The Set " + sh.next + " sign-up opens around " + sh.nextAt + ".";
-          else msg = "Tonight's sign-ups are full. Thanks for coming out!";
-          return { __error: msg, status: 409, closed: true };
-        }
-        // A backup from an earlier set who didn't get called can sign up again for the current set.
-        const isBackup = (e) => !e.jumped && d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped" && !x.jumped).sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
-        for (const old of d.entries.filter((e) => e.device === device && e.status === "waiting" && entrySet(e) < sh.set && isBackup(e)))
-          Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
-        const key = songKey(song, artist);
-        const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
-        if (taken && !repeat) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
-        const mine = d.entries.find((e) => e.device === device && active(e));
-        if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
-        const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
-        // Guest says they tipped to sing a song that's already taken; a host checks Cash App / Venmo and confirms.
-        if (repeat) Object.assign(e, { status: "pending", repeat: true, repeatFee: paymentsView(cfg).repeatFee,
-          repeatReq: { method: body.method === "venmo" ? "Venmo" : "Cash App", at: new Date().toISOString() } });
-        d.entries.push(e);
-        return { ok: true, id: e.id, backup: sh.count >= SINGERS ? sh.count - SINGERS + 1 : 0 };
-      });
-      if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken, closed: out.closed }, out.status || 400);
-      return json(out);
+      if (body.repeat && squareOn(cfg)) return fail("Tap Pay to pay with Square.");
+      const res = await doSignup(cfg, body, { repeat: !!body.repeat, method: body.method === "venmo" ? "Venmo" : "Cash App" });
+      if (res.error) return json(res.error, res.status);
+      return json(res.out);
     }
     // Guest says they've paid to skip to next; a host checks Cash App / Venmo and confirms.
     if (route === "skipreq" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       if (!paymentsView(cfg).on) return fail("Skip to next isn't available right now.");
+      if (squareOn(cfg)) return fail("Tap Pay to pay with Square.");
       const method = body.method === "venmo" ? "Venmo" : "Cash App", device = clean(body.device, 64);
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         const e = d.entries.find((x) => x.id === body.id && x.device === device);
@@ -256,20 +415,15 @@ export default async (req) => {
           e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "jump") {
-          // Move right after whoever is singing now (after any earlier paid skips), in the set that's on stage.
-          const line = d.entries.filter((x) => x.status === "waiting" && x.id !== e.id).sort((a, b) => (entrySet(a) - entrySet(b)) || (a.pos - b.pos));
-          if (!line.length) { Object.assign(e, { jumped: true }); delete e.skipReq; return { ok: true }; }
-          const cur = line[0], s = entrySet(cur), inSet = line.filter((x) => entrySet(x) === s);
-          let anchor = cur; for (const x of inSet.slice(1)) { if (x.jumped) anchor = x; else break; }
-          const nxt = inSet[inSet.indexOf(anchor) + 1];
-          e.set = s; e.pos = nxt ? (anchor.pos + nxt.pos) / 2 : anchor.pos + 1; e.jumped = true; e.jumpedBy = me.name;
-          e.paidVia = (e.skipReq && e.skipReq.method) || "Not recorded"; e.paidAt = new Date().toISOString(); e.paidFee = paymentsView(cfg).fee;
-          delete e.skipReq; delete e.skipDenied;
+          if (e.status !== "waiting" || e.jumped) return { __error: "That paid skip was already handled.", status: 409 };
+          const m = e.skipReq && (e.skipReq.sq ? "Other (host confirmed)" : e.skipReq.method);
+          doJump(d, e, me.name, m || "Not recorded", paymentsView(cfg).fee);
         }
         else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
         else if (body.action === "repeatok") {
           if (e.status !== "pending") return { __error: "That repeat song was already handled.", status: 409 };
-          Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: (e.repeatReq && e.repeatReq.method) || "Not recorded", repeatAt: new Date().toISOString(), repeatBy: me.name });
+          const m = e.repeatReq && (e.repeatReq.sq ? "Other (host confirmed)" : e.repeatReq.method);
+          Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: m || "Not recorded", repeatAt: new Date().toISOString(), repeatBy: me.name });
           delete e.repeatReq;
         }
         else if (body.action === "repeatno") {
@@ -311,6 +465,23 @@ export default async (req) => {
         const night = /^\d{4}-\d{2}-\d{2}$/.test(String(body.night || "")) ? body.night : lastWednesday();
         return json({ report: await buildReport(night) });
       }
+      if (body.op === "paymentsInfo") return json({ payments: paymentsAdminView(cfg) });
+      if (body.op === "square") {
+        if (body.disconnect) { await update("config", {}, (d) => { delete d.square; return d; }); return json({ ok: true, payments: paymentsAdminView(await loadConfig()) }); }
+        const token = String(body.squareToken || "").trim().replace(/^Bearer\s+/i, "");
+        if (!/^[A-Za-z0-9_\-]{20,300}$/.test(token)) return fail("That doesn't look like a Square access token. Copy the whole token from Square.");
+        let env = null, locations = [];
+        for (const tryEnv of ["production", "sandbox"]) {
+          try { const j = await sqCall({ token, env: tryEnv }, "GET", "/v2/locations"); env = tryEnv; locations = (j.locations || []).filter((l) => l.status !== "INACTIVE"); break; }
+          catch (err) { if (err.status !== 401) { console.error("square locations", err.message); return fail("Square said: " + err.message, 502); } }
+        }
+        if (!env) return fail("Square didn't accept that token. Make sure you copied the Production access token.", 400);
+        if (!locations.length) return fail("That Square account doesn't have an active location.");
+        const pick = locations.find((l) => l.id === body.locationId) || (locations.length === 1 ? locations[0] : null);
+        if (!pick) return json({ choose: locations.map((l) => ({ id: l.id, name: l.name })) });
+        await update("config", {}, (d) => { d.square = { token, env, locationId: pick.id, locationName: pick.name || "", currency: pick.currency || "USD", connectedAt: new Date().toISOString(), connectedBy: me.name }; return d; });
+        return json({ ok: true, payments: paymentsAdminView(await loadConfig()) });
+      }
       if (body.op === "payments") {
         const cashtag = clean(body.cashtag, 30).replace(/^\$*/, ""), venmo = clean(body.venmo, 40).replace(/^@*/, "");
         const fee = Math.max(1, Math.min(500, Math.round(Number(body.fee) || 50)));
@@ -318,7 +489,7 @@ export default async (req) => {
         if (cashtag && !/^[A-Za-z0-9_-]+$/.test(cashtag)) return fail("That $cashtag has characters Cash App doesn't use.");
         if (venmo && !/^[A-Za-z0-9_-]+$/.test(venmo)) return fail("That Venmo username has characters Venmo doesn't use.");
         await update("config", {}, (d) => { d.payments = { cashtag, venmo, fee, repeatFee }; return d; });
-        return json({ ok: true, payments: { cashtag, venmo, fee, repeatFee, on: !!(cashtag || venmo) } });
+        return json({ ok: true, payments: paymentsAdminView(await loadConfig()) });
       }
       if (body.op === "testMode") {
         await update("config", {}, (d) => { d.testMode = !!body.on; return d; });
