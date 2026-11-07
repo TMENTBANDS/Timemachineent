@@ -116,7 +116,7 @@ const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.ar
   jumped: !!e.jumped, skipReq: reqView(e.skipReq), skipDenied: !!e.skipDenied,
   repeat: !!e.repeat, repeatReq: reqView(e.repeatReq), repeatPaid: !!e.repeatPaid, repeatDenied: !!e.repeatDenied, repeatFee: e.repeatFee || null,
   payVia: e.repeatVia || e.paidVia || null, override: e.override || null,
-  payExpired: !!e.payExpired, payCancelled: !!e.payCancelled, payUrl: (sqOf(e) && sqOf(e).url) || null });
+  payExpired: !!e.payExpired, payCancelled: !!e.payCancelled, left: !!e.left, payUrl: (sqOf(e) && sqOf(e).url) || null });
 const reqView = (q) => (q ? { method: q.method, at: q.at, square: !!q.sq } : null);
 const squareOn = (cfg) => !!(cfg.square && cfg.square.token && cfg.square.locationId);
 const paymentsView = (cfg) => { const p = cfg.payments || {}; const sqOn = squareOn(cfg);
@@ -296,6 +296,21 @@ export default async (req) => {
       return json(nightView(await loadNight(cfg, loc, String(body.id || "")), cfg));
     }
     // Guest gives up on an unfinished Square payment.
+    // Guest taps "I'm leaving": take them off tonight's list (their song opens back up).
+    if (route === "leave" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      const device = clean(body.device, 64);
+      const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const e = d.entries.find((x) => x.id === body.id && x.device === device);
+        if (!e) return { __error: "We couldn't find your spot in line.", status: 404 };
+        if (!active(e)) return { ok: true };
+        Object.assign(e, { status: "skipped", left: true, by: "Left (removed themselves)", doneAt: new Date().toISOString() });
+        delete e.skipReq; delete e.repeatReq;
+        return { ok: true };
+      });
+      if (out.__error) return fail(out.__error, out.status);
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
     if (route === "paycancel" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const device = clean(body.device, 64);

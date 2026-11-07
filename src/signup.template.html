@@ -458,6 +458,7 @@ function vTicket(){
   if(!S.night){big='<span class="spin"></span>';line="Finding your spot…"}
   else if(!me){big="?";line="We couldn't find your sign-up. Check with the host at the stage."}
   else if(me.status==="done"){big="★";line="You crushed it! Sign up again when the next set's sign-up opens."}
+  else if(me.status==="skipped"&&me.left){big="👋";line="You're off the list. Thanks for coming out! Changed your mind? Pick a song to sign up again."}
   else if(me.status==="skipped"&&me.payCancelled){big="–";line="You cancelled that payment, so you're not in line for this song. Pick another song whenever you're ready."}
   else if(me.status==="skipped"&&me.payExpired){big="–";line="Your payment wasn't finished, so we let your spot go. You can pick the song again if it's still open."}
   else if(me.status==="skipped"&&me.repeatDenied){big="–";line=`The host couldn't find your $${me.repeatFee||pay().repeatFee} payment, so you're not in line for this song. See the host at the stage, or pick another song.`}
@@ -482,11 +483,26 @@ function vTicket(){
   ${me&&me.status==="pending"&&me.repeatReq?.square?`<div class="row">${me.payUrl?`<a class="btn" href="${esc(me.payUrl)}">Finish paying</a>`:""}<button class="btn ghost" id="paychk">Check again</button></div><button class="linkbtn" id="paycx">Cancel and pick a different song</button>`:""}
   ${me&&me.repeatPaid&&me.status==="waiting"?`<div class="status ok"><span><b>Payment confirmed.</b> Thanks for the tip! You're in line to sing it.</span></div>`:""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:(me&&me.status==="waiting"&&ix>2?"":`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`)}
-  ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}`;
+  ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}
+  ${me&&(me.status==="waiting"||me.status==="pending")?`<div class="foot"><button class="linkbtn" id="leave">I'm leaving: remove me from the list</button></div>`:""}`;
+}
+function openLeave(me){
+  const paid=me.jumped||me.repeatPaid;
+  const el=sheet(`<form id="lv"><span class="eyebrow">Leaving?</span>
+    <p style="font-size:1.1rem">Take yourself off tonight's list? You'll give up your spot for <b>${esc(me.song)}</b>, and someone else can pick it.</p>
+    ${paid?`<div class="status bad"><span>Heads up: tips already paid aren't refunded.</span></div>`:""}
+    <button class="btn" id="lvgo">Yes, remove me</button>
+    <button type="button" class="btn ghost" id="cx">Keep my spot</button>
+    <p class="muted" id="lverr" role="alert"></p></form>`);
+  $("#cx").onclick=()=>el.remove();
+  $("#lv").onsubmit=async e=>{ e.preventDefault(); $("#lvgo").disabled=true;
+    try{ const r=await api("leave",{body:{loc:S.loc,id:me.id,device}}); S.entries=r.entries; S.sheet=r.sheet; el.remove(); render() }
+    catch(err){ $("#lverr").textContent=err.error; $("#lvgo").disabled=false } };
 }
 bind.ticket=()=>{
   const chk=$("#paychk"); if(chk) chk.onclick=async()=>{ chk.disabled=true; await payCheck(); };
   const pcx=$("#paycx"); if(pcx) pcx.onclick=async()=>{ pcx.disabled=true; try{ const r=await api("paycancel",{body:{loc:S.loc,id:S.mine.id,device}}); S.entries=r.entries; S.sheet=r.sheet }catch(e){ S.lastErr=e.error } render() };
+  const lv=$("#leave"); if(lv) lv.onclick=()=>{ const me=S.entries.find(r=>S.mine&&r.id===S.mine.id); if(me) openLeave(me) };
   const sb=$("#skipbtn"); if(sb) sb.onclick=()=>{ const me=S.entries.find(r=>S.mine&&r.id===S.mine.id); if(me) openSkip(me) }; const nt=$("#nexttip"); if(nt) nt.onclick=()=>{showTip(1); startTips()}; if(!tipTimer) startTips(); $("#more").onclick=()=>{poll(0);go("songs")} };
 
 // ---------------- hosts ----------------
@@ -588,7 +604,7 @@ function vHost(){
   ${(()=>{ const n=act.filter(r=>(r.skipReq&&!r.skipReq.square)||(r.status==="pending"&&!r.repeatReq?.square)).length; return n?`<div class="status" style="border-color:var(--gold)"><span><b>${n} payment${n===1?"":"s"}</b> (paid skips or repeat songs) waiting for you to check. Look for the gold boxes below.</span></div>`:"" })()}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
-  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
+  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
   ${testNote()}`;
 }
 bind.host=()=>{
