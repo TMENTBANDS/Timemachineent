@@ -474,9 +474,9 @@ function vManage(){
     <button class="btn small" id="psv">Save payment info</button><p class="muted" id="perr2" role="alert"></p></form>
   <h3>Paid skips report</h3>
   <div class="toggle" style="flex-direction:column;align-items:stretch;gap:10px">
-    <p class="muted" style="font-size:.9rem">Confirmed paid skips by location for one night. It's emailed automatically every Thursday morning.</p>
+    <p class="muted" style="font-size:.9rem">Confirmed paid skips by location for one night. It's copied to that Wednesday's PAYROLL calendar every Thursday morning.</p>
     <div class="row" style="align-items:flex-end"><div class="field" style="flex:1 1 160px"><label for="rn">Night</label><input id="rn" type="date" value="${S.reportNight||lastWed()}"></div>
-      <button type="button" class="btn small" id="rshow">Show report</button><button type="button" class="btn small ghost" id="rsend">Email it now</button></div>
+      <button type="button" class="btn small" id="rshow">Show report</button></div>
     <div id="rout"></div></div>
   <h3>Location check</h3>
   <div class="toggle"><div><b>${S.settings?.testMode?"Off (test mode)":"On"}</b><p class="muted" style="font-size:.9rem">${S.settings?.testMode?"Anyone can sign up from anywhere. Turn it on before going live.":"Guests must be at the Sidecar to sign up."}</p></div>
@@ -493,9 +493,9 @@ async function admin(body){ try{ const r=await api("admin",{body:{token:S.token,
 bind.manage=()=>{
   bindBar();
   const rrun=async(op)=>{ S.reportNight=$("#rn").value; $("#rout").innerHTML='<p class="muted"><span class="spin"></span> Working…</p>';
-    try{ const r=await admin({op,night:S.reportNight}); $("#rout").innerHTML=(op==="emailReport"?'<p class="status ok">Report emailed.</p>':"")+reportHtml(r.report) }
+    try{ const r=await admin({op,night:S.reportNight}); $("#rout").innerHTML=reportHtml(r.report) }
     catch(e){ $("#rout").innerHTML=`<p class="status bad">${esc(e.error)}</p>` } };
-  $("#rshow").onclick=()=>rrun("report"); $("#rsend").onclick=()=>rrun("emailReport");
+  $("#rshow").onclick=()=>rrun("report");
   $("#pf").onsubmit=async e=>{ e.preventDefault(); $("#psv").disabled=true;
     try{ const r=await admin({op:"payments",cashtag:$("#ct").value.trim(),venmo:$("#vm").value.trim(),fee:$("#fee").value}); S.settings.payments=r.payments; render(); $("#perr2").textContent="Saved." }
     catch(err){ $("#perr2").textContent=err.error; $("#psv").disabled=false } };

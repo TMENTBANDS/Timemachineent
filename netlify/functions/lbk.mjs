@@ -2,7 +2,7 @@
 // Data lives in Netlify Blobs (store "lbk"); no other services needed.
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
-import { buildReport, emailReport, lastWednesday } from "../lib/report.mjs";
+import { buildReport, lastWednesday } from "../lib/report.mjs";
 
 const VENUES = {
   addison: { name: "Sidecar Addison", lat: 32.950981, lng: -96.8190583 },
@@ -18,6 +18,8 @@ const LOCK_AFTER = 5, LOCK_MS = 5 * 60e3;
 // One-time setup code lets Shonna set (or reset) her own PIN. Only its scrypt hash is stored here.
 const SETUP_SALT = "8d0a92d4b4a5a414ab34750ea0aad2ed";
 const SETUP_HASH = "e44a19add94f9702d80fe9f4aba2007d6b7abbc28998764dabc67e351d9b9bc6";
+// Read-only key for the weekly paid-skips report (used by Shonna's Thursday calendar task). Only its SHA-256 is stored here.
+const REPORT_KEY_HASH = "6d3ca3d2548ad3b005629eb78cff01fafbe6f4e999ab48700ed950019eb664c3";
 const DEFAULT_HOSTS = ["Shonna", "Rhett", "Wendy", "Carly", "Duncan", "Presley", "Cedric"];
 
 const store = () => getStore({ name: "lbk", consistency: "strong" });
@@ -125,6 +127,12 @@ export default async (req) => {
     // ---------- public ----------
     if (route === "settings" && req.method === "GET") {
       return json({ testMode: !!cfg.testMode, payments: paymentsView(cfg), night: nightKey(), venues: Object.fromEntries(Object.entries(VENUES).map(([k, v]) => [k, v.name])) });
+    }
+    if (route === "report" && req.method === "GET") {
+      const key = url.searchParams.get("key") || req.headers.get("x-report-key") || "";
+      if (!safeEq(crypto.createHash("sha256").update(key).digest("hex"), REPORT_KEY_HASH)) return fail("Not allowed.", 401);
+      const night = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("night") || "") ? url.searchParams.get("night") : lastWednesday();
+      return json({ report: await buildReport(night) });
     }
     if (route === "hosts" && req.method === "GET") {
       const { hosts } = await hostsDoc();
@@ -281,13 +289,9 @@ export default async (req) => {
     // ---------- Shonna only ----------
     if (route === "admin" && req.method === "POST") {
       if (!me.admin) return fail("Only Shonna can change hosts and settings.", 403);
-      if (body.op === "report" || body.op === "emailReport") {
+      if (body.op === "report") {
         const night = /^\d{4}-\d{2}-\d{2}$/.test(String(body.night || "")) ? body.night : lastWednesday();
-        const r = await buildReport(night);
-        if (body.op === "report") return json({ report: r });
-        const sent = await emailReport(r, process.env.URL);
-        if (!sent.ok) return fail("The report email didn't go through (status " + sent.status + "). Try again in a minute.", 502);
-        return json({ ok: true, report: r });
+        return json({ report: await buildReport(night) });
       }
       if (body.op === "payments") {
         const cashtag = clean(body.cashtag, 30).replace(/^\$*/, ""), venmo = clean(body.venmo, 40).replace(/^@*/, "");
