@@ -227,7 +227,8 @@ async function loadNight(cfg, loc, force) {
   return n;
 }
 const active = (e) => e.status === "waiting" || e.status === "pending";
-const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry),
+const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map((e) => ({ ...publicEntry(e),
+    sung: n.entries.filter((x) => x.device && x.device === e.device && x.status === "done" && x.id !== e.id).length })),
   host: n.host ? { id: n.host.id, name: n.host.name } : null });
 // One host runs each location per night. Returns an error object if someone else holds it; claims it if nobody does.
 // Shonna (admin) can always be on a location alongside the host, so she is never blocked or switched out.
@@ -272,6 +273,17 @@ async function doSignup(cfg, body, opts) {
     const mine = d.entries.find((e) => e.device === device && active(e));
     if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
     const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set: sh.set, pos: Date.now(), at: new Date().toISOString(), device };
+    // Sets 2 and 3: people who haven't sung yet tonight go ahead of people who already have (paid skips are separate and always go first).
+    e.sungBefore = d.entries.filter((x) => x.device === device && x.status === "done").length;
+    if (sh.set >= 2 && e.sungBefore === 0) {
+      const line = d.entries.filter((x) => x.status === "waiting").sort((a, b) => (entrySet(a) - entrySet(b)) || (a.pos - b.pos));
+      // Once this set is under way, whoever is up now keeps their turn. During the break nobody is protected yet.
+      const started = d.entries.some((x) => entrySet(x) === sh.set && x.status === "done");
+      const nowId = started && line.length ? line[0].id : null;
+      const inSet = d.entries.filter((x) => entrySet(x) === sh.set && active(x) && !x.jumped).sort((a, b) => a.pos - b.pos);
+      const firstRepeat = inSet.find((x) => (x.sungBefore || 0) > 0 && x.id !== nowId && !(nowId && inSet.indexOf(x) <= inSet.findIndex((y) => y.id === nowId)));
+      if (firstRepeat) { const i = inSet.indexOf(firstRepeat), prev = inSet[i - 1]; e.pos = prev ? (prev.pos + firstRepeat.pos) / 2 : firstRepeat.pos - 1; e.priority = true; }
+    }
     // Repeat song: the spot is held as pending until the payment is confirmed (by Square, or by a host checking Cash App / Venmo).
     if (repeat) Object.assign(e, { status: "pending", repeat: true, repeatFee: paymentsView(cfg).repeatFee,
       repeatReq: { method: opts.method, at: new Date().toISOString() } });
