@@ -120,7 +120,8 @@ const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.ar
 const reqView = (q) => (q ? { method: q.method, at: q.at, square: !!q.sq } : null);
 const squareOn = (cfg) => !!(cfg.square && cfg.square.token && cfg.square.locationId);
 const paymentsView = (cfg) => { const p = cfg.payments || {}; const sqOn = squareOn(cfg);
-  return { cashtag: sqOn ? "" : p.cashtag || "", venmo: sqOn ? "" : p.venmo || "", fee: p.fee || 50, repeatFee: p.repeatFee || 20,
+  // Venmo stays available with Square: guests show the host their payment.
+  return { cashtag: sqOn ? "" : p.cashtag || "", venmo: p.venmo || "", fee: p.fee || 50, repeatFee: p.repeatFee || 20,
     square: sqOn, squareName: sqOn ? cfg.square.locationName || "" : "", on: sqOn || !!(p.cashtag || p.venmo) }; };
 // Manage hosts needs the saved Cash App / Venmo even while Square is on.
 const paymentsAdminView = (cfg) => { const p = cfg.payments || {}; return { ...paymentsView(cfg), cashtag: p.cashtag || "", venmo: p.venmo || "" }; };
@@ -342,7 +343,7 @@ export default async (req) => {
       return fail("Unknown payment.");
     }
     if (route === "signup" && req.method === "POST") {
-      if (body.repeat && squareOn(cfg)) return fail("Tap Pay to pay with Square.");
+      if (body.repeat && squareOn(cfg) && body.method !== "venmo") return fail("Tap Pay to pay with Square.");
       const res = await doSignup(cfg, body, { repeat: !!body.repeat, method: body.method === "venmo" ? "Venmo" : "Cash App" });
       if (res.error) return json(res.error, res.status);
       return json(res.out);
@@ -351,7 +352,7 @@ export default async (req) => {
     if (route === "skipreq" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       if (!paymentsView(cfg).on) return fail("Skip to next isn't available right now.");
-      if (squareOn(cfg)) return fail("Tap Pay to pay with Square.");
+      if (squareOn(cfg) && body.method !== "venmo") return fail("Tap Pay to pay with Square.");
       const method = body.method === "venmo" ? "Venmo" : "Cash App", device = clean(body.device, 64);
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         const e = d.entries.find((x) => x.id === body.id && x.device === device);

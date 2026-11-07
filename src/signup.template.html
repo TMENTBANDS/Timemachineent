@@ -323,15 +323,17 @@ function openRepeatSquare(r){
     <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
     <button class="btn" id="go">Pay $${p.repeatFee}</button>
     <p class="muted" style="font-size:.9rem;text-align:center">Pay securely with ${SQ_METHODS}. You'll be in line as soon as it goes through.</p>
+    ${p.venmo?`<button type="button" class="btn ghost" id="usevenmo">Pay with Venmo instead</button>`:""}
     <button type="button" class="linkbtn" id="cx">Pick a different song</button>
     <p class="muted" id="err" role="alert"></p></form>`);
   $("#cx").onclick=()=>el.remove(); setTimeout(()=>{const n=$("#nm"); if(n&&!n.value) n.focus()},60);
   $("#f").onsubmit=e=>{ e.preventDefault(); const name=$("#nm").value.trim(); if(!name) return; store.set("lbk-name",name);
     goPay({kind:"repeat",loc:S.loc,name,song:r.t,artist:r.a,device,...(S.geo||{})},$("#go"),$("#err")) };
+  const uv=$("#usevenmo"); if(uv) uv.onclick=()=>{ const n=$("#nm").value.trim(); if(n) store.set("lbk-name",n); el.remove(); openRepeat(r,true) };
 }
-function openRepeat(r){
+function openRepeat(r,manual){
   if(S.sheet && !S.sheet.accepting){ openSignup(r); return }
-  if(pay().square){ openRepeatSquare(r); return }
+  if(pay().square&&!manual){ openRepeatSquare(r); return }
   const p=pay(), where=VENUES[S.loc].name.replace("Sidecar ",""), backup=S.sheet&&S.sheet.count>=S.sheet.singers;
   const link=(m,name)=>{ const note=encodeURIComponent(`Repeat song - ${where} - ${name||"?"} - ${r.t}`);
     return m==="cashapp"?`https://cash.app/$${encodeURIComponent(p.cashtag)}/${p.repeatFee}`:`https://venmo.com/${encodeURIComponent(p.venmo)}?txn=pay&amount=${p.repeatFee}&note=${note}` };
@@ -344,6 +346,7 @@ function openRepeat(r){
     <div style="display:flex;flex-direction:column;gap:10px;text-align:center">
       ${p.cashtag?`<a class="btn" data-m="cashapp" target="_blank" rel="noopener">Pay $${p.repeatFee} with Cash App</a>`:""}
       ${p.venmo?`<a class="btn" data-m="venmo" target="_blank" rel="noopener">Pay $${p.repeatFee} with Venmo</a>`:""}</div>
+    ${p.venmo?`<div class="status"><span><b>Paying with Venmo?</b> After you pay, show your Venmo payment to the host at the stage. You'll move up once they've seen it.</span></div>`:""}
     <button class="btn ghost" id="go" disabled>I've paid</button>
     <button type="button" class="linkbtn" id="cx">Pick a different song</button>
     <p class="muted" id="err" role="alert"></p></form>`);
@@ -376,6 +379,7 @@ function skipBlock(me,ix){
   if(ix>=0&&ix<=1) return "";
   if(me.skipReq&&me.skipReq.square) return `<div class="status"><span><b>Finishing your $${p.fee} payment…</b> You'll move up as soon as Square confirms it. If you closed the payment page, tap Finish paying.</span>
     <div class="row">${me.payUrl?`<a class="btn small" href="${esc(me.payUrl)}">Finish paying</a>`:""}<button class="btn small ghost" id="paychk">Check again</button><button class="btn small ghost" id="paycx">Cancel</button></div></div>`;
+  if(me.skipReq&&me.skipReq.method==="Venmo") return `<div class="status" style="border-color:var(--gold)"><span><b>Show your Venmo payment to the host at the stage.</b> Head up now with your phone. You'll move up as soon as they've seen it.</span></div>`;
   if(me.skipReq) return `<div class="status"><span><b>Payment sent via ${esc(me.skipReq.method)}.</b> Waiting for the host to confirm it. You'll move up as soon as they do.</span></div>`;
   return `<div class="status ${me.skipDenied?"bad":""}">${me.skipDenied?`<span>The host couldn't find your $${p.fee} payment. Try again, or see the host at the stage.</span>`:`<span><b>In a hurry?</b> Tip the band $${p.fee} to skip to next.</span>`}
     <button class="btn" id="skipbtn">Skip to next · $${p.fee}</button></div>`;
@@ -386,13 +390,15 @@ function openSkipSquare(me){
     <p>Tip the band $${p.fee} and you'll sing right after the current singer.</p>
     <button class="btn" id="go">Pay $${p.fee}</button>
     <p class="muted" style="font-size:.9rem;text-align:center">Pay securely with ${SQ_METHODS}. You'll move up as soon as it goes through.</p>
+    ${p.venmo?`<button type="button" class="btn ghost" id="usevenmo">Pay with Venmo instead</button>`:""}
     <button type="button" class="linkbtn" id="cx">Never mind</button>
     <p class="muted" id="skerr" role="alert"></p></form>`);
   $("#cx").onclick=()=>el.remove();
   $("#sk").onsubmit=e=>{ e.preventDefault(); goPay({kind:"skip",loc:S.loc,id:me.id,device},$("#go"),$("#skerr")) };
+  const uv=$("#usevenmo"); if(uv) uv.onclick=()=>{ el.remove(); openSkip(me,true) };
 }
-function openSkip(me){
-  if(pay().square){ openSkipSquare(me); return }
+function openSkip(me,manual){
+  if(pay().square&&!manual){ openSkipSquare(me); return }
   const where=VENUES[S.loc].name.replace("Sidecar ",""), noteText=`${where} - ${me.name}`;
   const p=pay(), note=encodeURIComponent(`Skip to next - ${where} - ${me.name} - ${me.song}`);
   const links=[];
@@ -402,6 +408,7 @@ function openSkip(me){
     <p>Tip the band $${p.fee} and you'll sing right after the current singer.</p>
     <p class="muted">Put <b>${esc(noteText)}</b> in the payment note so the host can find it.${p.cashtag?` Cash App: <b>$${esc(p.cashtag)}</b>.`:""}${p.venmo?` Venmo: <b>@${esc(p.venmo)}</b>.`:""}</p>
     <div style="display:flex;flex-direction:column;gap:10px;text-align:center">${links.join("")}</div>
+    ${p.venmo?`<div class="status"><span><b>Paying with Venmo?</b> After you pay, show your Venmo payment to the host at the stage. You'll move up once they've seen it.</span></div>`:""}
     <button type="button" class="btn ghost" id="paid" disabled>I've paid</button>
     <button type="button" class="linkbtn" id="cx">Never mind</button>
     <p class="muted" id="skerr" role="alert"></p></form>`);
@@ -426,6 +433,7 @@ function vTicket(){
   else if(me.status==="skipped"&&me.repeatDenied){big="–";line=`The host couldn't find your $${me.repeatFee||pay().repeatFee} payment, so you're not in line for this song. See the host at the stage, or pick another song.`}
   else if(me.status==="skipped"){big="–";line="The host skipped your turn. Come see us at the stage."}
   else if(me.status==="pending"&&me.repeatReq?.square){big="$";line=`<b>Finishing your $${me.repeatFee||pay().repeatFee} payment…</b> Your spot is held. You'll be in line as soon as Square confirms it. If you closed the payment page, tap Finish paying.`}
+  else if(me.status==="pending"&&me.repeatReq?.method==="Venmo"){big="$";line=`<b>Show your Venmo payment to the host at the stage.</b> Your spot is held. You'll be in line as soon as they've seen your $${me.repeatFee||pay().repeatFee} payment.`}
   else if(me.status==="pending"){big="$";line=`<b>Payment sent via ${esc(me.repeatReq?.method||"")}.</b> Waiting for the host to confirm your $${me.repeatFee||pay().repeatFee} tip. Your spot is held, and you'll be in line as soon as they do.`}
   else if(pl&&!pl.singer&&S.sheet&&S.sheet.set>me.set){eyebrow+=` · Set ${me.set}`;big="♪";
     line=S.sheet.accepting?`Set ${me.set} is wrapping up and a spot didn't open for you. <b>Set ${S.sheet.set} sign-up is open now</b>, so sign up again to get a spot!`:`A spot didn't open for you in Set ${me.set}. ${sheetMsg(S.sheet)}`;
@@ -517,9 +525,9 @@ function vHost(){
     <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.jumped?`<span class="tag done">Paid skip${r.payVia==="Cash"?" · cash":""}</span>`:pl.singer?"":'<span class="tag deck">Backup</span>'}${r.repeatPaid?`<span class="tag done">Repeat song${r.payVia==="Cash"?" · cash":""}</span>`:r.status==="pending"?'<span class="tag">Repeat · paying</span>':""}${r.override?`<span class="tag deck">Put back by ${esc(r.override)}</span>`:""}</span>
     <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
     ${r.skipReq&&r.skipReq.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${pay().fee} to skip with Square</b> (started ${fmtTime(r.skipReq.at)}). They'll move up by themselves once it goes through.</span><div class="row"><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Cancel skip</button></div></div></div>`
-    :r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
+    :r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. ${r.skipReq.method==="Venmo"?`Ask ${esc(r.name)} to show you the Venmo payment on their phone.`:`Check for a payment from ${esc(r.name)}.`}</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
     ${r.status==="pending"&&r.repeatReq?.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${r.repeatFee||pay().repeatFee} with Square</b> to sing a song that was already taken (started ${fmtTime(r.repeatReq.at)}). They'll go into line by themselves once it goes through. Unfinished payments give up the spot after 5 minutes.</span><div class="row"><button class="btn small ghost" data-a="repeatok" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="back" data-id="${r.id}">Put in line anyway</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Remove</button></div></div></div>`
-    :r.status==="pending"?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${r.repeatFee||pay().repeatFee} via ${esc(r.repeatReq?.method||"")}</b> at ${fmtTime(r.repeatReq?.at)} to sing a song that was already taken. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="repeatok" data-id="${r.id}">Paid, add to line</button><button class="btn small ghost" data-a="repeatok" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="back" data-id="${r.id}">Put in line anyway</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Not paid</button></div></div></div>`:`
+    :r.status==="pending"?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${r.repeatFee||pay().repeatFee} via ${esc(r.repeatReq?.method||"")}</b> at ${fmtTime(r.repeatReq?.at)} to sing a song that was already taken. ${r.repeatReq?.method==="Venmo"?`Ask ${esc(r.name)} to show you the Venmo payment on their phone.`:`Check for a payment from ${esc(r.name)}.`}</span><div class="row"><button class="btn small" data-a="repeatok" data-id="${r.id}">Paid, add to line</button><button class="btn small ghost" data-a="repeatok" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="back" data-id="${r.id}">Put in line anyway</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Not paid</button></div></div></div>`:`
     <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
     <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
     <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===list.length-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
