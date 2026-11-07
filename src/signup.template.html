@@ -484,7 +484,7 @@ function vTicket(){
   ${me&&me.repeatPaid&&me.status==="waiting"?`<div class="status ok"><span><b>Payment confirmed.</b> Thanks for the tip! You're in line to sing it.</span></div>`:""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:(me&&me.status==="waiting"&&ix>2?"":`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`)}
   ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}
-  ${me&&(me.status==="waiting"||me.status==="pending")?`<div class="foot"><button class="linkbtn" id="leave">I'm leaving: remove me from the list</button></div>`:""}`;
+  ${me&&(me.status==="waiting"||me.status==="pending")?`<button class="btn ghost" id="leave">I'm leaving: remove me from the list</button>`:""}`;
 }
 function openLeave(me){
   const paid=me.jumped||me.repeatPaid;
