@@ -22,17 +22,18 @@ export async function buildReport(night) {
   const locations = [];
   for (const [loc, name] of Object.entries(REPORT_VENUES)) {
     const n = (await store.get("night/" + loc + "/" + night, { type: "json" })) || { entries: [] };
-    const items = n.entries.filter((e) => e.jumped).sort((a, b) => String(a.paidAt || "").localeCompare(String(b.paidAt || ""))).map((e) => ({
+    const allEntries = [...(n.cleared || []), ...n.entries]; // include sign-ups from a list a host cleared
+    const items = allEntries.filter((e) => e.jumped).sort((a, b) => String(a.paidAt || "").localeCompare(String(b.paidAt || ""))).map((e) => ({
       name: e.name, song: e.song, artist: e.artist, method: e.paidVia || "Not recorded", fee: e.paidFee || defaultFee,
       at: e.paidAt || null, confirmedBy: e.jumpedBy || "", sang: e.status === "done",
     }));
     // Repeat songs: guests who tipped to sing a song someone else already picked that night.
-    const repeats = n.entries.filter((e) => e.repeatPaid).sort((a, b) => String(a.repeatAt || "").localeCompare(String(b.repeatAt || ""))).map((e) => ({
+    const repeats = allEntries.filter((e) => e.repeatPaid).sort((a, b) => String(a.repeatAt || "").localeCompare(String(b.repeatAt || ""))).map((e) => ({
       name: e.name, song: e.song, artist: e.artist, method: e.repeatVia || "Not recorded", fee: e.repeatFee || defaultRepeatFee,
       at: e.repeatAt || null, confirmedBy: e.repeatBy || "", sang: e.status === "done",
     }));
     locations.push({ loc, name, items, count: items.length, total: items.reduce((s, i) => s + i.fee, 0),
-      repeats, repeatCount: repeats.length, repeatTotal: repeats.reduce((s, i) => s + i.fee, 0), signups: n.entries.length });
+      repeats, repeatCount: repeats.length, repeatTotal: repeats.reduce((s, i) => s + i.fee, 0), signups: allEntries.length });
   }
   const sum = (k) => locations.reduce((s, l) => s + l[k], 0);
   // total/count = paid skips only (kept as before); repeatTotal/repeatCount = repeat songs; tipsTotal = both.

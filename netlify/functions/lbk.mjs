@@ -88,10 +88,20 @@ async function auth(cfg, token) {
   if (!h || (h.pinVer || 0) !== (p.v || 0)) return null; // changing a PIN signs that host out everywhere
   return h;
 }
-const session = (cfg, h) => ({
-  token: sign(cfg, { hid: h.id, v: h.pinVer || 0, exp: Date.now() + 14 * 3600e3 }),
-  host: { id: h.id, name: h.name, admin: !!h.admin },
-});
+// Host logins end at the next 1:00 am Central, so nobody stays logged in from one Wednesday to the next.
+function next1amChicago(now = Date.now()) {
+  const part = (ms) => { const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(ms)).map((x) => [x.type, x.value])); return p; };
+  const p = part(now);
+  let day = Date.UTC(+p.year, +p.month - 1, +p.day);
+  if (+p.hour >= 1) day += 864e5; // already past 1 am today: use tomorrow
+  let t = day + 7 * 3600e3; // 1 am Central is 6:00 or 7:00 UTC; start at 7:00 and adjust
+  for (let i = 0; i < 3; i++) { const q = part(t); const off = (+q.hour * 60 + +q.minute) - 60; if (!off) break; t -= off * 60e3; }
+  return t;
+}
+const session = (cfg, h) => { const exp = next1amChicago(); return {
+  token: sign(cfg, { hid: h.id, v: h.pinVer || 0, exp }),
+  host: { id: h.id, name: h.name, admin: !!h.admin }, expiresAt: exp,
+}; };
 
 function chicagoMinutes() {
   const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Chicago", hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(new Date());
@@ -466,6 +476,29 @@ export default async (req) => {
       return json(nightView(n, cfg));
     }
     // Hosts open the next set's sheet, or close/reopen the current one.
+    // Clear tonight's whole list at one location. The host re-enters their PIN. Paid skips/repeats stay in the report.
+    if (route === "clear" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      let pinOk = false;
+      const chk = await update("hosts", { hosts: [] }, (d) => {
+        const h = d.hosts.find((x) => x.id === me.id);
+        if (!h || !h.pinHash) return { __error: "Please log in again.", status: 401 };
+        if (h.lockUntil && h.lockUntil > Date.now()) return { __error: "Too many tries. Wait a few minutes and try again.", status: 429 };
+        if (safeEq(scrypt(body.pin, h.salt), h.pinHash)) { h.fails = 0; h.lockUntil = 0; pinOk = true; return { ok: true }; }
+        h.fails = (h.fails || 0) + 1; if (h.fails >= LOCK_AFTER) { h.fails = 0; h.lockUntil = Date.now() + LOCK_MS; }
+        return { ok: true };
+      });
+      if (chk.__error) return fail(chk.__error, chk.status);
+      if (!pinOk) return fail("That PIN doesn't match. The list was not cleared.", 401);
+      const at = new Date().toISOString();
+      await update(nightPath(loc), { entries: [] }, (d) => {
+        d.cleared = [...(d.cleared || []), ...d.entries.map((e) => ({ ...e, clearedAt: at, clearedBy: me.name }))];
+        d.entries = []; delete d.sheet; // start over at Set 1
+        d.clears = [...(d.clears || []), { at, by: me.name }];
+        return { ok: true };
+      });
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
     if (route === "sheet" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {

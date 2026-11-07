@@ -172,6 +172,7 @@ const S = {view:"venues", loc:null, q:"", by:"song", settings:null, entries:[], 
 let pollTimer=null;
 function poll(ms){ clearInterval(pollTimer); if(ms) pollTimer=setInterval(refresh, ms) }
 async function refresh(){
+  if(hostExpired()){ autoLogout(); return }
   const loc = S.view==="host" ? S.hostLoc : S.loc;
   if(!loc) return;
   try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr=""; }catch(e){ S.lastErr=e.error }
@@ -198,9 +199,10 @@ const venueButtons = () => Object.entries(VENUES).map(([k,x])=>`<button class="v
 const testNote = () => S.settings?.testMode ? `<p class="note">Test mode is on: the location check is off.</p>` : "";
 
 // ---------------- guests ----------------
+const noticeBox=()=>{ if(!S.notice) return ""; const n=S.notice; S.notice=""; return `<p class="status">${esc(n)}</p>` };
 function vVenues(){
   const mineTonight = S.mine && S.settings && S.mine.night===S.settings.night;
-  return `${brand}<span class="eyebrow">Time Machine Live Band Karaoke</span>
+  return `${brand}${noticeBox()}<span class="eyebrow">Time Machine Live Band Karaoke</span>
   <h1>Sing with <span>the band</span></h1>
   <p class="muted">Pick where you are tonight. We'll check your phone's location, then you can choose a song and get in line.</p>
   ${mineTonight?`<button class="btn ghost" id="myspot">See my spot in line</button>`:""}
@@ -533,9 +535,14 @@ bind.login=()=>{
   };
 };
 function signedIn(s){
-  S.token=s.token; S.me=s.host; store.set("lbk-host",s); store.set("lbk-lasthost",s.host.id);
-  go("hostloc");
+  S.token=s.token; S.me=s.host; S.hostExp=s.expiresAt||null; store.set("lbk-host",s); store.set("lbk-lasthost",s.host.id);
+  armLogout(); go("hostloc");
 }
+// Hosts are logged out automatically at 1:00 am (the server stops accepting the login then too).
+let logoutTimer=null;
+function armLogout(){ clearTimeout(logoutTimer); if(S.token&&S.hostExp){ const ms=S.hostExp-Date.now(); if(ms<=0) autoLogout(); else logoutTimer=setTimeout(autoLogout, Math.min(ms, 2147483000)) } }
+function hostExpired(){ return !!(S.token&&S.hostExp&&Date.now()>=S.hostExp) }
+function autoLogout(){ if(!S.token) return; logout(); S.notice="Hosts are logged out automatically at 1:00 am. Log in again next show."; render() }
 function vSetup(){
   return `${brand}<h2>First-time <span class="grad">setup</span></h2>
   <p class="muted">Enter the setup code Claude gave you and choose your own PIN. You can also use this if you ever forget your PIN.</p>
@@ -555,7 +562,7 @@ bind.setup=()=>{
 };
 function hostBar(extra){ return `<div class="topbar"><span class="eyebrow">${esc(S.me.name)}${extra||""}</span><span class="row" style="gap:14px">${S.me.admin&&S.view!=="manage"?`<button class="linkbtn" id="mng">Manage hosts</button>`:""}<button class="linkbtn" id="out">Log out</button></span></div>` }
 function bindBar(){ $("#out").onclick=logout; const m=$("#mng"); if(m) m.onclick=()=>openManage() }
-function logout(){ S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbk-hostloc",null); S.hostLoc=null; poll(0); go("venues") }
+function logout(){ clearTimeout(logoutTimer); S.hostExp=null; S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbk-hostloc",null); S.hostLoc=null; poll(0); go("venues") }
 function vHostLoc(){
   return `${hostBar()}<h1>Where are you <span>hosting?</span></h1><p class="muted">${nightLabel()}</p><div class="venues">${venueButtons()}</div>`;
 }
@@ -605,9 +612,25 @@ function vHost(){
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
   ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
-  ${testNote()}`;
+  ${testNote()}
+  ${S.night?`<div style="border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:8px"><h3>Start over</h3><p class="muted" style="font-size:.9rem">Clears every sign-up at ${VENUES[S.hostLoc].name} tonight and restarts sign-up at Set 1. Paid skips and repeat songs stay in the payment report.</p><button class="btn ghost" id="clearq" style="border-color:var(--warn);color:var(--warn)">Clear tonight's list</button></div>`:""}`;
+}
+function openClear(){
+  const where=VENUES[S.hostLoc].name;
+  const el=sheet(`<form id="cq"><span class="eyebrow" style="color:var(--warn)">Clear tonight's list</span>
+    <p style="font-size:1.1rem">This removes <b>every sign-up at ${esc(where)}</b> tonight, including people waiting in line, and restarts sign-up at Set 1. Guests will need to sign up again.</p>
+    <p class="muted">Paid skips and repeat songs stay in the payment report. This can't be undone.</p>
+    <div class="field"><label for="cqpin">Enter your PIN to confirm</label><input id="cqpin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></div>
+    <button class="btn" id="cqgo" style="background:var(--warn)">Clear the list</button>
+    <button type="button" class="btn ghost" id="cx">Cancel</button>
+    <p class="muted" id="cqerr" role="alert"></p></form>`);
+  $("#cx").onclick=()=>el.remove(); setTimeout(()=>{const p=$("#cqpin"); if(p) p.focus()},60);
+  $("#cq").onsubmit=async e=>{ e.preventDefault(); $("#cqgo").disabled=true;
+    try{ const r=await api("clear",{body:{token:S.token,loc:S.hostLoc,pin:$("#cqpin").value}}); S.entries=r.entries; S.sheet=r.sheet; S.night=r.night; el.remove(); S.actionErr=""; render() }
+    catch(err){ if(err.status===401&&/log in/i.test(err.error||"")){ el.remove(); logout(); return } $("#cqerr").textContent=err.error; $("#cqpin").value=""; $("#cqgo").disabled=false; $("#cqpin").focus() } };
 }
 bind.host=()=>{
+  const cq=$("#clearq"); if(cq) cq.onclick=openClear;
   bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
   const run=async(path,body,btn)=>{
     $$("[data-a],[data-sheet]").forEach(x=>x.disabled=true); S.actionErr="";
@@ -704,7 +727,9 @@ bind.manage=()=>{
 // ---------------- start ----------------
 (async()=>{
   try{ S.settings=await api("settings") }catch(e){ S.settings={testMode:false,night:null} }
-  if(S.token){ try{ const r=await api("me"); S.me=r.host }catch(e){ S.token=null; S.me=null; store.set("lbk-host",null) } }
+  S.hostExp=store.get("lbk-host")?.expiresAt||null;
+  if(hostExpired()){ logout(); S.notice="Hosts are logged out automatically at 1:00 am. Log in again next show." }
+  if(S.token){ try{ const r=await api("me"); S.me=r.host; armLogout() }catch(e){ S.token=null; S.me=null; store.set("lbk-host",null) } }
   if(location.hash==="#host"){ if(S.token){ S.view=S.hostLoc?"host":"hostloc"; render(); if(S.hostLoc) startHost(); } else openLogin(); return }
   const back=new URLSearchParams(location.search);
   if(back.has("paid")){ history.replaceState(null,"",location.pathname);
