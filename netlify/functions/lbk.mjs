@@ -343,8 +343,8 @@ export default async (req) => {
       return fail("Unknown payment.");
     }
     if (route === "signup" && req.method === "POST") {
-      if (body.repeat && squareOn(cfg) && body.method !== "venmo") return fail("Tap Pay to pay with Square.");
-      const res = await doSignup(cfg, body, { repeat: !!body.repeat, method: body.method === "venmo" ? "Venmo" : "Cash App" });
+      if (body.repeat && squareOn(cfg) && body.method !== "venmo" && body.method !== "cash") return fail("Tap Pay to pay with Square.");
+      const res = await doSignup(cfg, body, { repeat: !!body.repeat, method: body.method === "venmo" ? "Venmo" : body.method === "cash" ? "Cash" : "Cash App" });
       if (res.error) return json(res.error, res.status);
       return json(res.out);
     }
@@ -352,8 +352,8 @@ export default async (req) => {
     if (route === "skipreq" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       if (!paymentsView(cfg).on) return fail("Skip to next isn't available right now.");
-      if (squareOn(cfg) && body.method !== "venmo") return fail("Tap Pay to pay with Square.");
-      const method = body.method === "venmo" ? "Venmo" : "Cash App", device = clean(body.device, 64);
+      if (squareOn(cfg) && body.method !== "venmo" && body.method !== "cash") return fail("Tap Pay to pay with Square.");
+      const method = body.method === "venmo" ? "Venmo" : body.method === "cash" ? "Cash" : "Cash App", device = clean(body.device, 64);
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         const e = d.entries.find((x) => x.id === body.id && x.device === device);
         if (!e || e.status !== "waiting") return { __error: "We couldn't find your spot in line.", status: 404 };
@@ -424,13 +424,13 @@ export default async (req) => {
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "jump") {
           if (e.status !== "waiting" || e.jumped) return { __error: "That paid skip was already handled.", status: 409 };
-          const m = body.cash ? "Cash" : e.skipReq && (e.skipReq.sq ? "Other (host confirmed)" : e.skipReq.method);
+          const m = body.cash || (e.skipReq && e.skipReq.method === "Cash") ? "Cash" : e.skipReq && (e.skipReq.sq ? "Other (host confirmed)" : e.skipReq.method);
           doJump(d, e, me.name, m || "Not recorded", paymentsView(cfg).fee);
         }
         else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
         else if (body.action === "repeatok") {
           if (e.status !== "pending") return { __error: "That repeat song was already handled.", status: 409 };
-          const m = body.cash ? "Cash" : e.repeatReq && (e.repeatReq.sq ? "Other (host confirmed)" : e.repeatReq.method);
+          const m = body.cash || (e.repeatReq && e.repeatReq.method === "Cash") ? "Cash" : e.repeatReq && (e.repeatReq.sq ? "Other (host confirmed)" : e.repeatReq.method);
           Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: m || "Not recorded", repeatAt: new Date().toISOString(), repeatBy: me.name });
           delete e.repeatReq;
         }
