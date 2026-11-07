@@ -176,7 +176,7 @@ async function refresh(){
   if(!loc) return;
   try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr=""; }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
-  else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); }
+  else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); const mb=$("#minebox"); if(mb){ mb.outerHTML=mineBox(); bindMine() } }
 }
 document.addEventListener("visibilitychange",()=>{ if(!document.hidden) refresh() });
 
@@ -229,8 +229,13 @@ function checkLoc(loc){
   {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
 }
 const sheetBox=()=>S.sheet?`<div class="status ${S.sheet.accepting?"ok":"bad"}" id="sheetbox"><span>${sheetMsg(S.sheet)}</span></div>`:`<div id="sheetbox"></div>`;
+// While a guest is in line (or paying), the song list keeps a way back to their spot.
+function mineActive(){ if(!S.mine||!S.settings||S.mine.night!==S.settings.night||S.mine.loc!==S.loc) return false; const e=S.entries.find(x=>x.id===S.mine.id); return !e||e.status==="waiting"||e.status==="pending" }
+const mineBox=()=>`<div id="minebox">${mineActive()?`<button class="btn" id="myspot2" style="width:100%">← Back to my spot in line</button>`:""}</div>`;
+function bindMine(){ const m=$("#myspot2"); if(m) m.onclick=()=>{ go("ticket"); refresh(); poll(5000) } }
 function vSongs(){
   return `<div class="topbar"><span class="pill">${VENUES[S.loc].name} · tonight</span><button class="linkbtn" id="back">Change location</button></div>
+  ${mineBox()}
   <h2>Find <span class="grad">your song</span></h2>
   <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
   <div class="row" style="justify-content:space-between;align-items:center"><div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div><span class="count" id="count"></span></div><p class="muted" style="font-size:.9rem">Each song can only be sung once a night. Songs already picked show as taken${pay().on?`, but you can tip the band $${pay().repeatFee} to sing one anyway`:""}.</p></div>
@@ -238,7 +243,7 @@ function vSongs(){
   <ul class="list" id="list"></ul>`;
 }
 bind.songs = ()=>{
-  $("#back").onclick=()=>{poll(0);go("venues")};
+  $("#back").onclick=()=>{poll(0);go("venues")}; bindMine();
   const q=$("#q"); q.oninput=()=>{S.q=q.value;drawList()};
   refresh(); poll(15000);
   $$(".seg button").forEach(b=>b.onclick=()=>{S.by=b.dataset.by;render()});
@@ -509,12 +514,12 @@ function vHost(){
   const singersWaiting=act.filter(r=>r.status==="waiting"&&placeOf(r)?.singer);
   const item=(r,i,list)=>{ const pl=placeOf(r)||{singer:true,spot:i+1}, g=singersWaiting.indexOf(r);
     return `<li class="${g===0?"now":""}"><span class="pos">${pl.jumped?"$":pl.singer?pl.spot:"B"+pl.spot}</span>
-    <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.jumped?'<span class="tag done">Paid skip</span>':pl.singer?"":'<span class="tag deck">Backup</span>'}${r.repeatPaid?'<span class="tag done">Repeat song</span>':r.status==="pending"?'<span class="tag">Repeat · paying</span>':""}</span>
+    <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.jumped?`<span class="tag done">Paid skip${r.payVia==="Cash"?" · cash":""}</span>`:pl.singer?"":'<span class="tag deck">Backup</span>'}${r.repeatPaid?`<span class="tag done">Repeat song${r.payVia==="Cash"?" · cash":""}</span>`:r.status==="pending"?'<span class="tag">Repeat · paying</span>':""}${r.override?`<span class="tag deck">Put back by ${esc(r.override)}</span>`:""}</span>
     <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
-    ${r.skipReq&&r.skipReq.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${pay().fee} to skip with Square</b> (started ${fmtTime(r.skipReq.at)}). They'll move up by themselves once it goes through.</span><div class="row"><button class="btn small ghost" data-a="jump" data-id="${r.id}">Paid another way</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Cancel skip</button></div></div></div>`
-    :r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
-    ${r.status==="pending"&&r.repeatReq?.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${r.repeatFee||pay().repeatFee} with Square</b> to sing a song that was already taken (started ${fmtTime(r.repeatReq.at)}). They'll go into line by themselves once it goes through. Unfinished payments give up the spot after 20 minutes.</span><div class="row"><button class="btn small ghost" data-a="repeatok" data-id="${r.id}">Paid another way</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Remove</button></div></div></div>`
-    :r.status==="pending"?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${r.repeatFee||pay().repeatFee} via ${esc(r.repeatReq?.method||"")}</b> at ${fmtTime(r.repeatReq?.at)} to sing a song that was already taken. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="repeatok" data-id="${r.id}">Paid, add to line</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Not paid</button></div></div></div>`:`
+    ${r.skipReq&&r.skipReq.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${pay().fee} to skip with Square</b> (started ${fmtTime(r.skipReq.at)}). They'll move up by themselves once it goes through.</span><div class="row"><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Cancel skip</button></div></div></div>`
+    :r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
+    ${r.status==="pending"&&r.repeatReq?.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${r.repeatFee||pay().repeatFee} with Square</b> to sing a song that was already taken (started ${fmtTime(r.repeatReq.at)}). They'll go into line by themselves once it goes through. Unfinished payments give up the spot after 5 minutes.</span><div class="row"><button class="btn small ghost" data-a="repeatok" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="back" data-id="${r.id}">Put in line anyway</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Remove</button></div></div></div>`
+    :r.status==="pending"?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${r.repeatFee||pay().repeatFee} via ${esc(r.repeatReq?.method||"")}</b> at ${fmtTime(r.repeatReq?.at)} to sing a song that was already taken. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="repeatok" data-id="${r.id}">Paid, add to line</button><button class="btn small ghost" data-a="repeatok" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="back" data-id="${r.id}">Put in line anyway</button><button class="btn small ghost" data-a="repeatno" data-id="${r.id}">Not paid</button></div></div></div>`:`
     <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
     <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
     <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===list.length-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
@@ -542,7 +547,7 @@ function vHost(){
   ${(()=>{ const n=act.filter(r=>(r.skipReq&&!r.skipReq.square)||(r.status==="pending"&&!r.repeatReq?.square)).length; return n?`<div class="status" style="border-color:var(--gold)"><span><b>${n} payment${n===1?"":"s"}</b> (paid skips or repeat songs) waiting for you to check. Look for the gold boxes below.</span></div>`:"" })()}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
-  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
+  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
   ${testNote()}`;
 }
 bind.host=()=>{
@@ -553,7 +558,7 @@ bind.host=()=>{
     catch(e){ if(e.status===401){logout();return} S.actionErr=e.error }
     render();
   };
-  $$("[data-a]").forEach(b=>b.onclick=()=>run("host",{id:b.dataset.id,action:b.dataset.a}));
+  $$("[data-a]").forEach(b=>b.onclick=()=>run("host",{id:b.dataset.id,action:b.dataset.a,cash:b.dataset.cash==="1"}));
   $$("[data-sheet]").forEach(b=>b.onclick=()=>run("sheet",{op:b.dataset.sheet}));
 };
 async function openManage(){ poll(0); go("manage"); try{ S.hosts=(await api("hosts")).hosts }catch(e){} try{ S.adminPay=(await admin({op:"paymentsInfo"})).payments }catch(e){} render() }
