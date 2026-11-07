@@ -2,6 +2,7 @@
 // Data lives in Netlify Blobs (store "lbk"); no other services needed.
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
+import { buildReport, emailReport, lastWednesday } from "../lib/report.mjs";
 
 const VENUES = {
   addison: { name: "Sidecar Addison", lat: 32.950981, lng: -96.8190583 },
@@ -246,6 +247,7 @@ export default async (req) => {
           let anchor = cur; for (const x of inSet.slice(1)) { if (x.jumped) anchor = x; else break; }
           const nxt = inSet[inSet.indexOf(anchor) + 1];
           e.set = s; e.pos = nxt ? (anchor.pos + nxt.pos) / 2 : anchor.pos + 1; e.jumped = true; e.jumpedBy = me.name;
+          e.paidVia = (e.skipReq && e.skipReq.method) || "Not recorded"; e.paidAt = new Date().toISOString(); e.paidFee = paymentsView(cfg).fee;
           delete e.skipReq; delete e.skipDenied;
         }
         else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
@@ -279,6 +281,14 @@ export default async (req) => {
     // ---------- Shonna only ----------
     if (route === "admin" && req.method === "POST") {
       if (!me.admin) return fail("Only Shonna can change hosts and settings.", 403);
+      if (body.op === "report" || body.op === "emailReport") {
+        const night = /^\d{4}-\d{2}-\d{2}$/.test(String(body.night || "")) ? body.night : lastWednesday();
+        const r = await buildReport(night);
+        if (body.op === "report") return json({ report: r });
+        const sent = await emailReport(r, process.env.URL);
+        if (!sent.ok) return fail("The report email didn't go through (status " + sent.status + "). Try again in a minute.", 502);
+        return json({ ok: true, report: r });
+      }
       if (body.op === "payments") {
         const cashtag = clean(body.cashtag, 30).replace(/^\$*/, ""), venmo = clean(body.venmo, 40).replace(/^@*/, "");
         const fee = Math.max(1, Math.min(500, Math.round(Number(body.fee) || 50)));

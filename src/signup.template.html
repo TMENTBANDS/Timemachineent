@@ -472,14 +472,30 @@ function vManage(){
     <div class="field"><label for="vm">Venmo username</label><input id="vm" placeholder="@Your-Venmo" value="${esc(pay().venmo?"@"+pay().venmo:"")}" autocomplete="off" autocapitalize="off"></div>
     <div class="field"><label for="fee">Price ($)</label><input id="fee" inputmode="numeric" value="${pay().fee||50}"></div>
     <button class="btn small" id="psv">Save payment info</button><p class="muted" id="perr2" role="alert"></p></form>
+  <h3>Paid skips report</h3>
+  <div class="toggle" style="flex-direction:column;align-items:stretch;gap:10px">
+    <p class="muted" style="font-size:.9rem">Confirmed paid skips by location for one night. It's emailed automatically every Thursday morning.</p>
+    <div class="row" style="align-items:flex-end"><div class="field" style="flex:1 1 160px"><label for="rn">Night</label><input id="rn" type="date" value="${S.reportNight||lastWed()}"></div>
+      <button type="button" class="btn small" id="rshow">Show report</button><button type="button" class="btn small ghost" id="rsend">Email it now</button></div>
+    <div id="rout"></div></div>
   <h3>Location check</h3>
   <div class="toggle"><div><b>${S.settings?.testMode?"Off (test mode)":"On"}</b><p class="muted" style="font-size:.9rem">${S.settings?.testMode?"Anyone can sign up from anywhere. Turn it on before going live.":"Guests must be at the Sidecar to sign up."}</p></div>
     <button class="btn small${S.settings?.testMode?"":" ghost"}" id="tm">${S.settings?.testMode?"Turn on":"Turn off"}</button></div>
   <div class="row"><button class="btn ghost" id="bk">Back to tonight's list</button></div>`;
 }
+function lastWed(){ const d=new Date(Date.now()-6*3600e3), ymd=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago"}).format(d), x=new Date(ymd+"T12:00:00Z"); x.setUTCDate(x.getUTCDate()-((x.getUTCDay()-3+7)%7)); return x.toISOString().slice(0,10) }
+function reportHtml(r){
+  return r.locations.map(l=>`<div style="display:flex;flex-direction:column;gap:6px"><div class="topbar"><b>${esc(l.name)}</b><span class="muted" style="font-variant-numeric:tabular-nums">${l.count} paid skip${l.count===1?"":"s"} · $${l.total}</span></div>
+    ${l.items.length?`<ul class="q">${l.items.map(i=>`<li style="grid-template-columns:1fr"><span class="who">${esc(i.name)} · $${i.fee} via ${esc(i.method)}</span><span class="what">${esc(i.song)} · ${fmtTime(i.at)}${i.confirmedBy?` · confirmed by ${esc(i.confirmedBy)}`:""}</span></li>`).join("")}</ul>`:`<p class="muted">None</p>`}</div>`).join("")
+    +`<p style="font-variant-numeric:tabular-nums"><b>Total: ${r.count} paid skip${r.count===1?"":"s"} · $${r.total}</b></p>`;
+}
 async function admin(body){ try{ const r=await api("admin",{body:{token:S.token,...body}}); if(r.hosts) S.hosts=r.hosts; return r }catch(e){ if(e.status===401) logout(); throw e } }
 bind.manage=()=>{
   bindBar();
+  const rrun=async(op)=>{ S.reportNight=$("#rn").value; $("#rout").innerHTML='<p class="muted"><span class="spin"></span> Working…</p>';
+    try{ const r=await admin({op,night:S.reportNight}); $("#rout").innerHTML=(op==="emailReport"?'<p class="status ok">Report emailed.</p>':"")+reportHtml(r.report) }
+    catch(e){ $("#rout").innerHTML=`<p class="status bad">${esc(e.error)}</p>` } };
+  $("#rshow").onclick=()=>rrun("report"); $("#rsend").onclick=()=>rrun("emailReport");
   $("#pf").onsubmit=async e=>{ e.preventDefault(); $("#psv").disabled=true;
     try{ const r=await admin({op:"payments",cashtag:$("#ct").value.trim(),venmo:$("#vm").value.trim(),fee:$("#fee").value}); S.settings.payments=r.payments; render(); $("#perr2").textContent="Saved." }
     catch(err){ $("#perr2").textContent=err.error; $("#psv").disabled=false } };
