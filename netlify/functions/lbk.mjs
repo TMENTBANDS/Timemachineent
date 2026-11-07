@@ -101,13 +101,16 @@ function sheetStatus(d, cfg) {
   const sheet = d.sheet || { set: 1, open: null }; // open: null = Set 1 opens on the clock
   let open = sheet.open;
   if (open === null) { const m = chicagoMinutes(); open = !!cfg.testMode || m >= SET1_OPENS || m < 6 * 60; }
-  const count = d.entries.filter((e) => entrySet(e) === sheet.set && e.status !== "skipped").length;
+  // Paid skips don't take one of the 12 singer or 3 backup spots.
+  const count = d.entries.filter((e) => entrySet(e) === sheet.set && e.status !== "skipped" && !e.jumped).length;
   const full = count >= PER_SET;
   return { set: sheet.set, open, full, accepting: open && !full, count, perSet: PER_SET, singers: SINGERS, backups: BACKUPS,
     next: sheet.set < LAST_SET ? sheet.set + 1 : null, nextAt: NEXT_SHEET_AT[sheet.set + 1] || null, auto: sheet.open === null };
 }
 const nightPath = (loc) => "night/" + loc + "/" + nightKey();
-const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt });
+const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt,
+  jumped: !!e.jumped, skipReq: e.skipReq || null, skipDenied: !!e.skipDenied });
+const paymentsView = (cfg) => { const p = cfg.payments || {}; return { cashtag: p.cashtag || "", venmo: p.venmo || "", fee: p.fee || 50, on: !!(p.cashtag || p.venmo) }; };
 const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map(publicEntry) });
 
 export default async (req) => {
@@ -120,7 +123,7 @@ export default async (req) => {
   try {
     // ---------- public ----------
     if (route === "settings" && req.method === "GET") {
-      return json({ testMode: !!cfg.testMode, night: nightKey(), venues: Object.fromEntries(Object.entries(VENUES).map(([k, v]) => [k, v.name])) });
+      return json({ testMode: !!cfg.testMode, payments: paymentsView(cfg), night: nightKey(), venues: Object.fromEntries(Object.entries(VENUES).map(([k, v]) => [k, v.name])) });
     }
     if (route === "hosts" && req.method === "GET") {
       const { hosts } = await hostsDoc();
@@ -153,7 +156,7 @@ export default async (req) => {
           return { __error: msg, status: 409, closed: true };
         }
         // A backup from an earlier set who didn't get called can sign up again for the current set.
-        const isBackup = (e) => d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped").sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
+        const isBackup = (e) => !e.jumped && d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped" && !x.jumped).sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
         for (const old of d.entries.filter((e) => e.device === device && e.status === "waiting" && entrySet(e) < sh.set && isBackup(e)))
           Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
         const key = songKey(song, artist);
@@ -167,6 +170,22 @@ export default async (req) => {
       });
       if (out.__error) return json({ error: out.__error, id: out.id, taken: out.taken, closed: out.closed }, out.status || 400);
       return json(out);
+    }
+    // Guest says they've paid to skip to next; a host checks Cash App / Venmo and confirms.
+    if (route === "skipreq" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      if (!paymentsView(cfg).on) return fail("Skip to next isn't available right now.");
+      const method = body.method === "venmo" ? "Venmo" : "Cash App", device = clean(body.device, 64);
+      const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const e = d.entries.find((x) => x.id === body.id && x.device === device);
+        if (!e || e.status !== "waiting") return { __error: "We couldn't find your spot in line.", status: 404 };
+        if (e.jumped) return { __error: "You're already skipping to next.", status: 409 };
+        e.skipReq = { method, at: new Date().toISOString() }; delete e.skipDenied;
+        return { ok: true };
+      });
+      if (out.__error) return fail(out.__error, out.status);
+      const n = (await store().get(nightPath(loc), { type: "json" })) || { entries: [] };
+      return json(nightView(n, cfg));
     }
     if (route === "login" && req.method === "POST") {
       let result;
@@ -219,6 +238,17 @@ export default async (req) => {
           if (other) return { __error: other.name + " picked " + e.song + " after the skip, so it can't go back in line. Ask " + e.name + " to pick another song.", status: 409 }; 
           e.status = "waiting"; e.pos = (act.length ? act[act.length - 1].pos : Date.now()) + 1; delete e.by; delete e.doneAt; }
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
+        else if (body.action === "jump") {
+          // Move right after whoever is singing now (after any earlier paid skips), in the set that's on stage.
+          const line = d.entries.filter((x) => x.status === "waiting" && x.id !== e.id).sort((a, b) => (entrySet(a) - entrySet(b)) || (a.pos - b.pos));
+          if (!line.length) { Object.assign(e, { jumped: true }); delete e.skipReq; return { ok: true }; }
+          const cur = line[0], s = entrySet(cur), inSet = line.filter((x) => entrySet(x) === s);
+          let anchor = cur; for (const x of inSet.slice(1)) { if (x.jumped) anchor = x; else break; }
+          const nxt = inSet[inSet.indexOf(anchor) + 1];
+          e.set = s; e.pos = nxt ? (anchor.pos + nxt.pos) / 2 : anchor.pos + 1; e.jumped = true; e.jumpedBy = me.name;
+          delete e.skipReq; delete e.skipDenied;
+        }
+        else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
         else if (body.action === "up" || body.action === "down") {
           const i = act.findIndex((x) => x.id === e.id), j = body.action === "up" ? i - 1 : i + 1;
           if (i < 0 || !act[j]) return { ok: true };
@@ -249,6 +279,14 @@ export default async (req) => {
     // ---------- Shonna only ----------
     if (route === "admin" && req.method === "POST") {
       if (!me.admin) return fail("Only Shonna can change hosts and settings.", 403);
+      if (body.op === "payments") {
+        const cashtag = clean(body.cashtag, 30).replace(/^\$*/, ""), venmo = clean(body.venmo, 40).replace(/^@*/, "");
+        const fee = Math.max(1, Math.min(500, Math.round(Number(body.fee) || 50)));
+        if (cashtag && !/^[A-Za-z0-9_-]+$/.test(cashtag)) return fail("That $cashtag has characters Cash App doesn't use.");
+        if (venmo && !/^[A-Za-z0-9_-]+$/.test(venmo)) return fail("That Venmo username has characters Venmo doesn't use.");
+        await update("config", {}, (d) => { d.payments = { cashtag, venmo, fee }; return d; });
+        return json({ ok: true, payments: { cashtag, venmo, fee, on: !!(cashtag || venmo) } });
+      }
       if (body.op === "testMode") {
         await update("config", {}, (d) => { d.testMode = !!body.on; return d; });
         return json({ ok: true, testMode: !!body.on });

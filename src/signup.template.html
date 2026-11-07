@@ -30,6 +30,7 @@ button,input,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--gold);outline-offset:2px}
 .btn{border:0;border-radius:999px;padding:14px 22px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;font-size:.95rem;background:var(--warm);color:var(--ink)}
+a.btn{display:block;text-decoration:none}
 .btn.ghost{background:transparent;color:var(--fg);border:2px solid var(--line)}
 .btn.small{padding:8px 14px;font-size:.78rem;letter-spacing:.08em}
 .btn:disabled{opacity:.45;cursor:default}
@@ -122,7 +123,8 @@ function startTips(){ clearInterval(tipTimer); tipTimer=setInterval(()=>{ if(S.v
 const SET_TIMES = {1:"8:30–9:30", 2:"10:00–11:00", 3:"11:30–12:30"};
 // Place within a set: the first 12 (not counting skips) are singers, the rest are backups.
 function placeOf(e){
-  const inSet=S.entries.filter(x=>x.set===e.set&&x.status!=="skipped").sort((a,b)=>a.pos-b.pos);
+  if(e.jumped) return {singer:true,spot:null,jumped:true}; // paid skips don't use one of the 12 spots
+  const inSet=S.entries.filter(x=>x.set===e.set&&x.status!=="skipped"&&!x.jumped).sort((a,b)=>a.pos-b.pos);
   const i=inSet.findIndex(x=>x.id===e.id), n=S.sheet?.singers||12;
   return i<0?null:(i<n?{singer:true,spot:i+1}:{singer:false,spot:i-n+1});
 }
@@ -289,6 +291,34 @@ function openSignup(r){
     }
   };
 }
+const pay=()=>S.settings?.payments||{on:false,fee:50};
+function skipBlock(me,ix){
+  const p=pay(); if(!p.on) return "";
+  if(me.jumped) return `<div class="status ok"><span><b>Paid skip confirmed.</b> Thanks for the tip! You're moving to the front.</span></div>`;
+  if(ix>=0&&ix<=1) return "";
+  if(me.skipReq) return `<div class="status"><span><b>Payment sent via ${esc(me.skipReq.method)}.</b> Waiting for the host to confirm it. You'll move up as soon as they do.</span></div>`;
+  return `<div class="status ${me.skipDenied?"bad":""}">${me.skipDenied?`<span>The host couldn't find your $${p.fee} payment. Try again, or see the host at the stage.</span>`:`<span><b>In a hurry?</b> Tip the band $${p.fee} to skip to next.</span>`}
+    <button class="btn" id="skipbtn">Skip to next · $${p.fee}</button></div>`;
+}
+function openSkip(me){
+  const p=pay(), note=encodeURIComponent(`Skip to next - ${me.name} - ${me.song}`);
+  const links=[];
+  if(p.cashtag) links.push(`<a class="btn" data-m="cashapp" href="https://cash.app/$${encodeURIComponent(p.cashtag)}/${p.fee}" target="_blank" rel="noopener">Pay with Cash App</a>`);
+  if(p.venmo) links.push(`<a class="btn" data-m="venmo" href="https://venmo.com/${encodeURIComponent(p.venmo)}?txn=pay&amount=${p.fee}&note=${note}" target="_blank" rel="noopener">Pay with Venmo</a>`);
+  const el=sheet(`<form id="sk"><span class="eyebrow">Skip to next · $${p.fee}</span>
+    <p>Tip the band $${p.fee} and you'll sing right after the current singer.</p>
+    <p class="muted">Put <b>${esc(me.name)}</b> in the payment note so the host can find it.${p.cashtag?` Cash App: <b>$${esc(p.cashtag)}</b>.`:""}${p.venmo?` Venmo: <b>@${esc(p.venmo)}</b>.`:""}</p>
+    <div style="display:flex;flex-direction:column;gap:10px;text-align:center">${links.join("")}</div>
+    <button type="button" class="btn ghost" id="paid" disabled>I've paid</button>
+    <button type="button" class="linkbtn" id="cx">Never mind</button>
+    <p class="muted" id="skerr" role="alert"></p></form>`);
+  let method=null;
+  el.querySelectorAll("a[data-m]").forEach(a=>a.addEventListener("click",()=>{ method=a.dataset.m; const b=$("#paid"); b.disabled=false; b.className="btn"; b.textContent=`I've paid with ${method==="venmo"?"Venmo":"Cash App"}`; }));
+  $("#cx").onclick=()=>el.remove();
+  $("#paid").onclick=async()=>{ $("#paid").disabled=true;
+    try{ const r=await api("skipreq",{body:{loc:S.loc,id:me.id,device,method}}); S.entries=r.entries; S.sheet=r.sheet; el.remove(); render() }
+    catch(e){ $("#skerr").textContent=e.error; $("#paid").disabled=false } };
+}
 function vTicket(){
   const me=S.entries.find(r=>S.mine&&r.id===S.mine.id);
   const act=S.entries.filter(r=>r.status==="waiting").sort(byOrder), ix=act.findIndex(r=>me&&r.id===me.id);
@@ -309,11 +339,12 @@ function vTicket(){
   return `${brand}<span class="eyebrow">${eyebrow}</span>
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
+  ${me&&me.status==="waiting"?skipBlock(me,ix):""}
   ${me&&me.status==="waiting"?tipCard():""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)}</p>`:(me&&me.status==="waiting"&&ix>2?"":`<p class="muted" style="text-align:center">This updates on its own. Keep this page open.</p>`)}
   ${backupMoved&&S.sheet.accepting?`<button class="btn" id="more">Sign up for Set ${S.sheet.set}</button>`:`<button class="btn ghost" id="more">Browse the songbook</button>`}`;
 }
-bind.ticket=()=>{ const nt=$("#nexttip"); if(nt) nt.onclick=()=>{showTip(1); startTips()}; if(!tipTimer) startTips(); $("#more").onclick=()=>{poll(0);go("songs")} };
+bind.ticket=()=>{ const sb=$("#skipbtn"); if(sb) sb.onclick=()=>{ const me=S.entries.find(r=>S.mine&&r.id===S.mine.id); if(me) openSkip(me) }; const nt=$("#nexttip"); if(nt) nt.onclick=()=>{showTip(1); startTips()}; if(!tipTimer) startTips(); $("#more").onclick=()=>{poll(0);go("songs")} };
 
 // ---------------- hosts ----------------
 async function openLogin(){
@@ -377,15 +408,16 @@ function vHost(){
   const sang=past.filter(r=>r.status==="done").length, sk=past.length-sang, sh=S.sheet;
   const singersWaiting=act.filter(r=>placeOf(r)?.singer);
   const item=(r,i,list)=>{ const pl=placeOf(r)||{singer:true,spot:i+1}, g=singersWaiting.indexOf(r);
-    return `<li class="${g===0?"now":""}"><span class="pos">${pl.singer?pl.spot:"B"+pl.spot}</span>
-    <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.singer?"":'<span class="tag deck">Backup</span>'}</span>
+    return `<li class="${g===0?"now":""}"><span class="pos">${pl.jumped?"$":pl.singer?pl.spot:"B"+pl.spot}</span>
+    <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.jumped?'<span class="tag done">Paid skip</span>':pl.singer?"":'<span class="tag deck">Backup</span>'}</span>
     <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
+    ${r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. Check for a payment from ${esc(r.name)}.</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
     <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
     <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
     <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===list.length-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
     <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`; };
   const sets=[1,2,3].filter(s=>all.some(r=>r.set===s)||(sh&&s<=sh.set));
-  const setBlock=s=>{ const w=act.filter(r=>r.set===s), kept=all.filter(r=>r.set===s&&r.status!=="skipped").length, n=sh?.singers||12;
+  const setBlock=s=>{ const w=act.filter(r=>r.set===s), kept=all.filter(r=>r.set===s&&r.status!=="skipped"&&!r.jumped).length, n=sh?.singers||12;
     return `<div style="display:flex;flex-direction:column;gap:8px"><div class="topbar"><h3>Set ${s} · ${SET_TIMES[s]}</h3><span class="muted" style="font-size:.9rem;font-variant-numeric:tabular-nums">${Math.min(kept,n)} of ${n} singers${kept>n?` · ${kept-n} backup${kept-n===1?"":"s"}`:""}</span></div>
     ${w.length?`<ol class="q">${w.map((r,i)=>item(r,i,w)).join("")}</ol>`:`<div class="empty">${kept?"Everyone in this set has had a turn.":"No sign-ups yet."}</div>`}</div>`; };
   let ctl="";
@@ -404,6 +436,7 @@ function vHost(){
   <div class="row"><button class="btn small ghost" id="sw">Switch location</button></div>
   ${ctl}
   ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
+  ${act.some(r=>r.skipReq)?`<div class="status" style="border-color:var(--gold)"><span><b>${act.filter(r=>r.skipReq).length} paid skip request${act.filter(r=>r.skipReq).length===1?"":"s"}</b> waiting for you to check. Look for the gold boxes below.</span></div>`:""}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
   ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
@@ -431,6 +464,13 @@ function vManage(){
     <div class="field"><label for="an">Name</label><input id="an" maxlength="30" required autocomplete="off"></div>
     <div class="field"><label for="ap">PIN (4–6 numbers)</label><input id="ap" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" required autocomplete="off"></div>
     <button class="btn" id="ago">Add host</button><p class="muted" id="aerr" role="alert"></p></form>
+  <h3>Skip to next (paid)</h3>
+  <form id="pf" class="toggle" style="flex-direction:column;align-items:stretch;gap:10px">
+    <p class="muted" style="font-size:.9rem">${pay().on?"On: guests waiting in line see a Skip to next button.":"Off until you add a Cash App $cashtag or Venmo username."}</p>
+    <div class="field"><label for="ct">Cash App $cashtag</label><input id="ct" placeholder="$YourCashtag" value="${esc(pay().cashtag?"$"+pay().cashtag:"")}" autocomplete="off" autocapitalize="off"></div>
+    <div class="field"><label for="vm">Venmo username</label><input id="vm" placeholder="@Your-Venmo" value="${esc(pay().venmo?"@"+pay().venmo:"")}" autocomplete="off" autocapitalize="off"></div>
+    <div class="field"><label for="fee">Price ($)</label><input id="fee" inputmode="numeric" value="${pay().fee||50}"></div>
+    <button class="btn small" id="psv">Save payment info</button><p class="muted" id="perr2" role="alert"></p></form>
   <h3>Location check</h3>
   <div class="toggle"><div><b>${S.settings?.testMode?"Off (test mode)":"On"}</b><p class="muted" style="font-size:.9rem">${S.settings?.testMode?"Anyone can sign up from anywhere. Turn it on before going live.":"Guests must be at the Sidecar to sign up."}</p></div>
     <button class="btn small${S.settings?.testMode?"":" ghost"}" id="tm">${S.settings?.testMode?"Turn on":"Turn off"}</button></div>
@@ -439,6 +479,9 @@ function vManage(){
 async function admin(body){ try{ const r=await api("admin",{body:{token:S.token,...body}}); if(r.hosts) S.hosts=r.hosts; return r }catch(e){ if(e.status===401) logout(); throw e } }
 bind.manage=()=>{
   bindBar();
+  $("#pf").onsubmit=async e=>{ e.preventDefault(); $("#psv").disabled=true;
+    try{ const r=await admin({op:"payments",cashtag:$("#ct").value.trim(),venmo:$("#vm").value.trim(),fee:$("#fee").value}); S.settings.payments=r.payments; render(); $("#perr2").textContent="Saved." }
+    catch(err){ $("#perr2").textContent=err.error; $("#psv").disabled=false } };
   $("#bk").onclick=()=>{ go(S.hostLoc?"host":"hostloc"); if(S.hostLoc) startHost() };
   $("#tm").onclick=async()=>{ $("#tm").disabled=true; const on=!S.settings.testMode; try{ await admin({op:"testMode",on}); S.settings.testMode=on }catch(e){} render() };
   $("#af").onsubmit=async e=>{ e.preventDefault(); $("#ago").disabled=true;
