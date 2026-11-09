@@ -87,6 +87,13 @@ a.btn{display:block;text-decoration:none}
 .q .what{color:var(--muted);font-size:.95rem;min-width:0;overflow-wrap:anywhere}
 .q .acts{grid-column:2;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
 .q.done li{opacity:.65}
+details.past{border-top:1px solid var(--line);padding-top:12px}
+details.past summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}
+details.past summary::-webkit-details-marker{display:none}
+details.past summary::before{content:"▸";color:var(--orange);font-size:1.1rem;transition:transform .15s}
+details.past[open] summary::before{transform:rotate(90deg)}
+details.past summary h3{display:inline}
+details.past[open] summary{margin-bottom:10px}
 .tag{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:var(--gold);border-radius:6px;padding:2px 6px;font-weight:800;margin-left:6px;vertical-align:2px}
 .tag.deck{background:var(--muted)}.tag.skip{background:var(--warn)}.tag.done{background:var(--ok)}
 .empty{border:1px dashed var(--line);border-radius:16px;padding:22px;text-align:center;color:var(--muted)}
@@ -640,7 +647,7 @@ function vHost(){
   ${(()=>{ const n=act.filter(r=>(r.skipReq&&!r.skipReq.square)||(r.status==="pending"&&!r.repeatReq?.square)).length; return n?`<div class="status" style="border-color:var(--gold)"><span><b>${n} payment${n===1?"":"s"}</b> (paid skips or repeat songs) waiting for you to check. Look for the gold boxes below.</span></div>`:"" })()}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
-  ${past.length?`<h3>Already up</h3><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`:""}
+  ${past.length?`<details class="past" id="pastbox" ${S.pastOpen?"open":""}><summary><h3>Already sang <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:600">(${past.length})</span></h3></summary><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol></details>`:""}
   ${testNote()}
   ${S.night?`<div style="border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:8px"><h3>Start over</h3><p class="muted" style="font-size:.9rem">Clears every sign-up at ${VENUES[S.hostLoc].name} tonight and restarts sign-up at Set 1. Paid skips and repeat songs stay in the payment report.</p><button class="btn ghost" id="clearq" style="border-color:var(--warn);color:var(--warn)">Clear tonight's list</button></div>`:""}`;
 }
@@ -659,6 +666,7 @@ function openClear(){
     catch(err){ if(err.status===401&&/log in/i.test(err.error||"")){ el.remove(); logout(); return } if(err.kicked){ el.remove(); kicked(err.by); return } $("#cqerr").textContent=err.error; $("#cqpin").value=""; $("#cqgo").disabled=false; $("#cqpin").focus() } };
 }
 bind.host=()=>{
+  const pb=$("#pastbox"); if(pb) pb.addEventListener("toggle",()=>{ S.pastOpen=pb.open });
   const cq=$("#clearq"); if(cq) cq.onclick=openClear;
   bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
   const run=async(path,body,btn)=>{
