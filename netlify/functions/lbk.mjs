@@ -543,8 +543,9 @@ export default async (req) => {
         if (body.action === "done") Object.assign(e, { status: "done" }, stamp);
         else if (body.action === "skip") Object.assign(e, { status: "skipped" }, stamp);
         else if (body.action === "back") {
-          // Host override: always puts the singer back at the end of the line, whatever the rules say (skipped, sang, unpaid, song taken).
+          // Host override: puts the singer back at the end of the line (skipped, sang, song taken) — but never an unpaid repeat song.
           if (e.status === "waiting") return { ok: true };
+          if (e.status === "pending" || (e.repeat && !e.repeatPaid)) return { __error: "Not paid: " + e.name + "'s repeat song can't go in line until the payment is confirmed.", status: 409 };
           const others = d.entries.filter((x) => x.status === "waiting" && x.id !== e.id);
           const stage = others.length ? Math.min(...others.map(entrySet)) : sheetStatus(d, cfg).set;
           if (entrySet(e) < stage) e.set = stage;
@@ -560,12 +561,16 @@ export default async (req) => {
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "jump") {
           if (e.status !== "waiting" || e.jumped) return { __error: "That paid skip was already handled.", status: 409 };
+          // Only a confirmed payment moves anyone up. Square payments confirm themselves; hosts only confirm cash or Venmo/Cash App they've seen.
+          if (!e.skipReq) return { __error: e.name + " hasn't asked to skip, so there's no payment to confirm.", status: 409 };
+          if (e.skipReq.sq) return { __error: "Not paid yet: " + e.name + " is paying with Square. They move up by themselves once Square confirms it.", status: 409 };
           const m = body.cash || (e.skipReq && e.skipReq.method === "Cash") ? "Cash" : e.skipReq && (e.skipReq.sq ? "Other (host confirmed)" : e.skipReq.method);
           doJump(d, e, me.name, m || "Not recorded", paymentsView(cfg).fee);
         }
         else if (body.action === "nopay") { delete e.skipReq; e.skipDenied = true; }
         else if (body.action === "repeatok") {
           if (e.status !== "pending") return { __error: "That repeat song was already handled.", status: 409 };
+          if (e.repeatReq && e.repeatReq.sq) return { __error: "Not paid yet: " + e.name + " is paying with Square. They go into line by themselves once Square confirms it.", status: 409 };
           const m = body.cash || (e.repeatReq && e.repeatReq.method === "Cash") ? "Cash" : e.repeatReq && (e.repeatReq.sq ? "Other (host confirmed)" : e.repeatReq.method);
           Object.assign(e, { status: "waiting", repeatPaid: true, repeatVia: m || "Not recorded", repeatAt: new Date().toISOString(), repeatBy: me.name });
           delete e.repeatReq;
@@ -578,6 +583,9 @@ export default async (req) => {
         else if (body.action === "up" || body.action === "down") {
           const i = act.findIndex((x) => x.id === e.id), j = body.action === "up" ? i - 1 : i + 1;
           if (i < 0 || !act[j]) return { ok: true };
+          // Nobody waiting on a skip payment can be moved up by hand; the payment moves them.
+          const rising = body.action === "up" ? e : act[j];
+          if (rising.skipReq && !rising.jumped) return { __error: "Not paid yet: " + rising.name + " moves up once their skip payment is confirmed.", status: 409 };
           const p = act[j].pos; act[j].pos = e.pos; e.pos = p === e.pos ? p + (body.action === "up" ? -1 : 1) : p;
         } else return { __error: "Unknown action.", status: 400 };
         return { ok: true };
