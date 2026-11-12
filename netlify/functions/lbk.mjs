@@ -109,13 +109,16 @@ function chicagoMinutes() {
   return get("hour") * 60 + get("minute");
 }
 const entrySet = (e) => e.set || 1;
+// Bonus spots don't use one of a set's 12 singer or 3 backup spots: paid skips, VIPs a host added,
+// and backups who moved up from the set before.
+const bonus = (e) => !!(e.jumped || e.vip || e.moved);
 // Where tonight's sign-up stands: which sheet is current, whether it's open, and how full it is.
 function sheetStatus(d, cfg) {
   const sheet = d.sheet || { set: 1, open: null }; // open: null = Set 1 opens on the clock
   let open = sheet.open;
   if (open === null) { const m = chicagoMinutes(); open = !!cfg.testMode || m >= SET1_OPENS || m < 6 * 60; }
   // Paid skips don't take one of the 12 singer or 3 backup spots.
-  const count = d.entries.filter((e) => entrySet(e) === sheet.set && e.status !== "skipped" && !e.jumped).length;
+  const count = d.entries.filter((e) => entrySet(e) === sheet.set && e.status !== "skipped" && !bonus(e)).length;
   const full = count >= PER_SET;
   return { set: sheet.set, open, full, accepting: open && !full, count, perSet: PER_SET, singers: SINGERS, backups: BACKUPS,
     next: sheet.set < LAST_SET ? sheet.set + 1 : null, nextAt: NEXT_SHEET_AT[sheet.set + 1] || null, auto: sheet.open === null };
@@ -123,6 +126,7 @@ function sheetStatus(d, cfg) {
 const nightPath = (loc) => "night/" + loc + "/" + nightKey();
 // status "pending" = a $20 repeat-song sign-up waiting for a host to confirm the payment. It holds its spot but isn't in line yet.
 const publicEntry = (e) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: entrySet(e), pos: e.pos, at: e.at, by: e.by, doneAt: e.doneAt,
+  vip: !!e.vip, addedBy: e.addedBy || null, moved: !!e.moved, movedFrom: e.movedFrom || null, offeredFor: e.offeredFor || null, declined: !!e.declined,
   jumped: !!e.jumped, skipReq: reqView(e.skipReq), skipDenied: !!e.skipDenied,
   repeat: !!e.repeat, repeatReq: reqView(e.repeatReq), repeatPaid: !!e.repeatPaid, repeatDenied: !!e.repeatDenied, repeatFee: e.repeatFee || null,
   payVia: e.repeatVia || e.paidVia || null, override: e.override || null,
@@ -227,7 +231,25 @@ async function loadNight(cfg, loc, force) {
   return n;
 }
 const active = (e) => e.status === "waiting" || e.status === "pending";
-const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), entries: n.entries.map((e) => ({ ...publicEntry(e),
+// status "offered" = a backup whose set ended before they were called. Their phone asks if they want to move to the next set.
+// Yes puts them in the next set's first 5 (after any paid skips and earlier movers, never ahead of whoever is singing now).
+function moveUpPos(d, e, set) {
+  const line = d.entries.filter((x) => x.status === "waiting" && x.id !== e.id && entrySet(x) === set).sort((a, b) => a.pos - b.pos);
+  if (!line.length) return Date.now();
+  const started = d.entries.some((x) => entrySet(x) === set && x.status === "done");
+  let k = started ? 1 : 0;
+  while (k < line.length && k < 4 && (line[k].moved || line[k].jumped)) k++;
+  if (k === 0) return line[0].pos - 1;
+  if (k >= line.length) return line[line.length - 1].pos + 1;
+  return (line[k - 1].pos + line[k].pos) / 2;
+}
+function applyMove(d, e) {
+  const to = e.offeredFor || Math.min(entrySet(e) + 1, LAST_SET);
+  Object.assign(e, { status: "waiting", moved: true, movedFrom: entrySet(e), set: to });
+  e.pos = moveUpPos(d, e, to);
+  for (const k of ["offeredFor", "offeredAt", "by", "doneAt", "declined"]) delete e[k];
+}
+const nightView = (n, cfg) => ({ night: nightKey(), sheet: sheetStatus(n, cfg), ended: n.ended || [], entries: n.entries.map((e) => ({ ...publicEntry(e),
     sung: n.entries.filter((x) => x.device && x.device === e.device && x.status === "done" && x.id !== e.id).length })),
   host: n.host ? { id: n.host.id, name: n.host.name } : null });
 // One host runs each location per night. Returns an error object if someone else holds it; claims it if nobody does.
@@ -264,9 +286,14 @@ async function doSignup(cfg, body, opts) {
       return { __error: msg, status: 409, closed: true };
     }
     // A backup from an earlier set who didn't get called can sign up again for the current set.
-    const isBackup = (e) => !e.jumped && d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped" && !x.jumped).sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
+    const isBackup = (e) => !bonus(e) && d.entries.filter((x) => entrySet(x) === entrySet(e) && x.status !== "skipped" && !bonus(x)).sort((a, b) => a.pos - b.pos).findIndex((x) => x.id === e.id) >= SINGERS;
     for (const old of d.entries.filter((e) => e.device === device && e.status === "waiting" && entrySet(e) < sh.set && isBackup(e)))
       Object.assign(old, { status: "skipped", by: "Moved to Set " + sh.set, doneAt: new Date().toISOString() });
+    // A backup who was asked to move up but picked a new song instead: their old spot goes to the already-sang list.
+    for (const old of d.entries.filter((e) => e.device === device && e.status === "offered")) {
+      Object.assign(old, { status: "skipped", declined: true, by: "Picked a new song instead", doneAt: new Date().toISOString() });
+      delete old.offeredFor; delete old.offeredAt;
+    }
     const key = songKey(song, artist);
     const taken = d.entries.find((e) => e.status !== "skipped" && songKey(e.song, e.artist) === key); // skipped songs open back up
     if (taken && !repeat) return { __error: "Someone already picked " + song + " tonight. Please choose another song.", status: 409, taken: true };
@@ -280,7 +307,7 @@ async function doSignup(cfg, body, opts) {
       // Once this set is under way, whoever is up now keeps their turn. During the break nobody is protected yet.
       const started = d.entries.some((x) => entrySet(x) === sh.set && x.status === "done");
       const nowId = started && line.length ? line[0].id : null;
-      const inSet = d.entries.filter((x) => entrySet(x) === sh.set && active(x) && !x.jumped).sort((a, b) => a.pos - b.pos);
+      const inSet = d.entries.filter((x) => entrySet(x) === sh.set && active(x) && !bonus(x)).sort((a, b) => a.pos - b.pos);
       const firstRepeat = inSet.find((x) => (x.sungBefore || 0) > 0 && x.id !== nowId && !(nowId && inSet.indexOf(x) <= inSet.findIndex((y) => y.id === nowId)));
       if (firstRepeat) { const i = inSet.indexOf(firstRepeat), prev = inSet[i - 1]; e.pos = prev ? (prev.pos + firstRepeat.pos) / 2 : firstRepeat.pos - 1; e.priority = true; }
     }
@@ -394,6 +421,27 @@ export default async (req) => {
       if (res.error) return json(res.error, res.status);
       return json(res.out);
     }
+    // Guest answers "Move to the next set?" after their set ended before they were called.
+    if (route === "moveup" && req.method === "POST") {
+      const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
+      const device = clean(body.device, 64);
+      const out = await update(nightPath(loc), { entries: [] }, (d) => {
+        const e = d.entries.find((x) => x.id === body.id && x.device === device);
+        if (!e) return { __error: "We couldn't find your sign-up.", status: 404 };
+        if (e.status !== "offered") return { ok: true }; // already answered, or a host handled it
+        if (body.yes) {
+          const mine = d.entries.find((x) => x.device === device && active(x) && x.id !== e.id);
+          if (mine) return { __error: "You're already in line with " + mine.song + ".", status: 409 };
+          applyMove(d, e);
+        } else {
+          Object.assign(e, { status: "skipped", declined: true, by: "Passed on Set " + e.offeredFor, doneAt: new Date().toISOString() });
+          delete e.offeredFor; delete e.offeredAt;
+        }
+        return { ok: true };
+      });
+      if (out.__error) return fail(out.__error, out.status);
+      return json(nightView(await loadNight(cfg, loc), cfg));
+    }
     // Guest says they've paid to skip to next; a host checks Cash App / Venmo and confirms.
     if (route === "skipreq" && req.method === "POST") {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
@@ -471,6 +519,23 @@ export default async (req) => {
       const loc = body.loc; if (!VENUES[loc]) return fail("Unknown location.");
       const out = await update(nightPath(loc), { entries: [] }, (d) => {
         const held = holdLoc(d, me); if (held) return held;
+        // VIP: a host adds anyone, any song, to any set, wherever they want. VIPs are bonus spots and never get a phone prompt.
+        if (body.action === "vip") {
+          const name = clean(body.name, 30), song = clean(body.song, 120), artist = clean(body.artist, 120);
+          if (!name || !song) return { __error: "Add a name and a song.", status: 400 };
+          if (d.entries.length >= MAX_PER_NIGHT) return { __error: "Tonight's list is full.", status: 409 };
+          const set = Math.max(1, Math.min(LAST_SET, Math.round(Number(body.set)) || sheetStatus(d, cfg).set));
+          const line = d.entries.filter((x) => x.status === "waiting" && entrySet(x) === set).sort((a, b) => a.pos - b.pos);
+          const end = line.length ? line[line.length - 1].pos + 1 : Date.now();
+          let pos = end;
+          if (body.after === "top") pos = line.length ? line[0].pos - 1 : Date.now();
+          else if (body.after && body.after !== "end") {
+            const i = line.findIndex((x) => x.id === body.after);
+            pos = i < 0 ? end : i + 1 < line.length ? (line[i].pos + line[i + 1].pos) / 2 : line[i].pos + 1;
+          }
+          d.entries.push({ id: crypto.randomUUID().slice(0, 12), name, song, artist, status: "waiting", set, pos, at: new Date().toISOString(), vip: true, addedBy: me.name });
+          return { ok: true };
+        }
         const e = d.entries.find((x) => x.id === body.id);
         const act = d.entries.filter((x) => x.status === "waiting" && e && entrySet(x) === entrySet(e)).sort((a, b) => a.pos - b.pos); // same set only
         if (!e) return { __error: "That sign-up isn't on the list anymore.", status: 404 };
@@ -486,7 +551,11 @@ export default async (req) => {
           const inSet = others.filter((x) => entrySet(x) === entrySet(e)).sort((a, b) => a.pos - b.pos);
           e.status = "waiting"; e.pos = (inSet.length ? inSet[inSet.length - 1].pos : Date.now()) + 1;
           e.override = me.name;
-          for (const k of ["by", "doneAt", "repeatReq", "repeatDenied", "payExpired", "payCancelled"]) delete e[k];
+          for (const k of ["by", "doneAt", "repeatReq", "repeatDenied", "payExpired", "payCancelled", "offeredFor", "offeredAt", "declined"]) delete e[k];
+        }
+        else if (body.action === "moveup") {
+          if (e.status !== "offered") return { __error: "That singer was already moved or removed.", status: 409 };
+          applyMove(d, e);
         }
         else if (body.action === "remove") d.entries = d.entries.filter((x) => x.id !== e.id);
         else if (body.action === "jump") {
@@ -551,6 +620,25 @@ export default async (req) => {
         if (body.op === "openNext") { if (!sh.next) return { __error: "Set " + LAST_SET + " is the last set tonight.", status: 400 }; d.sheet = { set: sh.next, open: true }; }
         else if (body.op === "close") d.sheet = { set: sh.set, open: false };
         else if (body.op === "reopen") d.sheet = { set: sh.set, open: true };
+        else if (body.op === "endSet") {
+          // The set on stage is over. Backups (B1-B3) still waiting get asked on their phones if they want to move up;
+          // until they answer they sit in this set's already-sang list. VIPs still waiting carry over to the top of the next set.
+          const s = Math.round(Number(body.set));
+          if (!(s >= 1 && s <= LAST_SET)) return { __error: "Pick a set to end.", status: 400 };
+          const nx = s < LAST_SET ? s + 1 : null, at = new Date().toISOString();
+          const counted = d.entries.filter((x) => entrySet(x) === s && x.status !== "skipped" && !bonus(x)).sort((a, b) => a.pos - b.pos);
+          for (const b of counted.slice(SINGERS).filter((x) => x.status === "waiting")) {
+            if (nx) Object.assign(b, { status: "offered", offeredFor: nx, offeredAt: at, by: "Set " + s + " ended", doneAt: at });
+            else Object.assign(b, { status: "skipped", by: "Set " + s + " ended", doneAt: at });
+          }
+          if (nx) {
+            const vips = d.entries.filter((x) => x.vip && x.status === "waiting" && entrySet(x) === s).sort((a, b) => a.pos - b.pos);
+            const line = d.entries.filter((x) => x.status === "waiting" && entrySet(x) === nx).sort((a, b) => a.pos - b.pos);
+            const base = line.length ? line[0].pos : Date.now();
+            vips.forEach((v, i) => { v.set = nx; v.pos = base - (vips.length - i); });
+          }
+          d.ended = [...new Set([...(d.ended || []), s])];
+        }
         else return { __error: "Unknown request.", status: 400 };
         return { ok: true };
       });

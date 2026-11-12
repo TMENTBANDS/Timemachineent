@@ -102,6 +102,12 @@ details.past[open] summary{margin-bottom:10px}
 .toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
 .spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--orange);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-3px}
 @keyframes sp{to{transform:rotate(360deg)}}
+.tag.vip{background:#ff2e88;color:#fff}.tag.moved{background:#23d5f5}
+.q li.vip{border-color:#ff2e88}.q li.vip .pos{color:#ff2e88;font-size:1.1rem}
+.offer{border:2px solid var(--orange);border-radius:18px;padding:18px;background:var(--panel);display:flex;flex-direction:column;gap:12px}
+.pastset{font-weight:800;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin:6px 0 2px}
+/* bottom sheets never run off the top of the screen; they scroll inside when a phone keyboard is open */
+.sheet form{max-height:calc(100% - 12px);max-height:calc(100dvh - 12px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 @media (prefers-reduced-motion:reduce){.spin{animation:none}}
 </style>
 </head>
@@ -134,14 +140,17 @@ const SET_TIMES = {1:"8:30–9:30", 2:"10:00–11:00", 3:"11:30–12:30"};
 // Place within a set: the first 12 (not counting skips) are singers, the rest are backups.
 function placeOf(e){
   if(e.jumped) return {singer:true,spot:null,jumped:true}; // paid skips don't use one of the 12 spots
-  const inSet=S.entries.filter(x=>x.set===e.set&&x.status!=="skipped"&&!x.jumped).sort((a,b)=>a.pos-b.pos);
+  if(e.vip) return {singer:true,spot:null,vip:true};       // VIPs a host added are bonus spots too
+  if(e.moved) return {singer:true,spot:null,moved:true};   // so are backups who moved up from the set before
+  const inSet=S.entries.filter(x=>x.set===e.set&&x.status!=="skipped"&&!bonusOf(x)).sort((a,b)=>a.pos-b.pos);
   const i=inSet.findIndex(x=>x.id===e.id), n=S.sheet?.singers||12;
   return i<0?null:(i<n?{singer:true,spot:i+1}:{singer:false,spot:i-n+1});
 }
 const byOrder=(a,b)=>(a.set-b.set)||(a.pos-b.pos);
+const bonusOf=x=>!!(x.jumped||x.vip||x.moved);
 function nextSetLine(set){
   const nx={1:"Set 2 sign-up opens around 9:30",2:"Set 3 sign-up opens around 11:30"}[set];
-  return nx?`If you don't get to sing in Set ${set}, you'll need to sign up again when the ${nx}.`:`Set 3 is the last set of the night, so if a spot doesn't open up, we'll catch you next Wednesday!`;
+  return nx?`If Set ${set} ends before you're called, this page will ask if you want to move to the first 5 singers of Set ${set+1}.`:`Set 3 is the last set of the night, so if a spot doesn't open up, we'll catch you next Wednesday!`;
 }
 function sheetMsg(sh){
   if(!sh) return "";
@@ -161,6 +170,13 @@ const songKey = (s,a) => norm(s+" "+a).replace(/ /g,"");
 // A backup from an earlier set can pick the same song again for the new set.
 const takenSet = () => new Set(S.entries.filter(e=>e.status!=="skipped" && !(S.mine&&e.id===S.mine.id&&e.status==="waiting"&&S.sheet&&e.set<S.sheet.set&&placeOf(e)&&!placeOf(e).singer)).map(e=>songKey(e.song,e.artist)));
 const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
+// Once a guest passes the location check, they stay checked in at that venue for the rest of the night,
+// so singing again doesn't mean picking the location and checking in all over.
+function checkin(){ const c=store.get("lbk-checkin"); return c&&S.settings&&c.night===S.settings.night&&VENUES[c.loc]?c:null }
+function saveCheckin(loc,geo){ store.set("lbk-checkin",{loc,night:S.settings?.night||null,...(geo||{})}) }
+// Quietly refresh the saved location while the guest browses (no prompt once they've allowed it).
+function freshGeo(){ if(!navigator.geolocation||S.settings?.testMode||!S.loc) return;
+  navigator.geolocation.getCurrentPosition(p=>{ const {latitude:lat,longitude:lng,accuracy:acc}=p.coords; S.geo={lat,lng,acc}; saveCheckin(S.loc,S.geo) },()=>{},{enableHighAccuracy:true,timeout:8000,maximumAge:120000}) }
 let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
 
 async function api(path, opts={}){
@@ -182,7 +198,7 @@ async function refresh(){
   if(hostExpired()){ autoLogout(); return }
   const loc = S.view==="host" ? S.hostLoc : S.loc;
   if(!loc) return;
-  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.lastErr="";
+  try{ const r = await api("queue?loc="+loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.ended=r.ended||[]; S.lastErr="";
     if(S.view==="host"&&S.me&&!S.me.admin&&r.host&&r.host.id!==S.me.id){ kicked(r.host.name); return } }catch(e){ S.lastErr=e.error }
   if(S.view==="ticket"||S.view==="host") render();
   else if(S.view==="songs" && $("#list")){ drawList(); const sb=$("#sheetbox"); if(sb) sb.outerHTML=sheetBox(); const mb=$("#minebox"); if(mb){ mb.outerHTML=mineBox(); bindMine() } }
@@ -226,22 +242,23 @@ bind.venues = ()=>{
 function geoBox(html,cls){ $("#geo").innerHTML=`<div class="status ${cls||""}">${html}</div>` }
 function checkLoc(loc){
   const x=VENUES[loc];
-  if(S.settings?.testMode){ S.loc=loc; S.geo=null; go("songs"); return; }
+  if(S.settings?.testMode){ S.loc=loc; S.geo=null; saveCheckin(loc,null); go("songs"); return; }
   geoBox(`<span><span class="spin"></span> Checking that you're at <b>${x.name}</b>…</span>`);
   const fail=why=>{ geoBox(`<span><b>Couldn't confirm you're at ${x.name}.</b> ${why}</span><span class="muted">Online sign-up only works inside the venue. You can still sign up with the host at the stage.</span><div class="row"><button class="btn small ghost" id="retry">Try again</button></div>`,"bad"); $("#retry").onclick=()=>checkLoc(loc) };
   if(!navigator.geolocation){ fail("This browser can't share location."); return }
   navigator.geolocation.getCurrentPosition(p=>{
     const R=6371e3,t=v=>v*Math.PI/180,{latitude:la,longitude:lo,accuracy:ac}=p.coords;
     const h=Math.sin(t(x.lat-la)/2)**2+Math.cos(t(la))*Math.cos(t(x.lat))*Math.sin(t(x.lng-lo)/2)**2, d=2*R*Math.asin(Math.sqrt(h));
-    if(d <= 300+Math.min(ac||0,200)){ S.loc=loc; S.geo={lat:la,lng:lo,acc:ac}; go("songs"); }
+    if(d <= 300+Math.min(ac||0,200)){ S.loc=loc; S.geo={lat:la,lng:lo,acc:ac}; saveCheckin(loc,S.geo); go("songs"); }
     else fail(`Your phone says you're about ${(d/1609).toFixed(1)} miles away.`);
   }, e=>fail(e.code===1?"Location is turned off for this page. Allow location in your browser settings, then try again.":"Your phone couldn't find its location."),
   {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
 }
 const sheetBox=()=>S.sheet?`<div class="status ${S.sheet.accepting?"ok":"bad"}" id="sheetbox"><span>${sheetMsg(S.sheet)}</span></div>`:`<div id="sheetbox"></div>`;
 // While a guest is in line (or paying), the song list keeps a way back to their spot.
-function mineActive(){ if(!S.mine||!S.settings||S.mine.night!==S.settings.night||S.mine.loc!==S.loc) return false; const e=S.entries.find(x=>x.id===S.mine.id); return !e||e.status==="waiting"||e.status==="pending" }
-const mineBox=()=>`<div id="minebox">${mineActive()?`<button class="btn" id="myspot2" style="width:100%">← Back to my spot in line</button>`:""}</div>`;
+function mineActive(){ if(!S.mine||!S.settings||S.mine.night!==S.settings.night||S.mine.loc!==S.loc) return false; const e=S.entries.find(x=>x.id===S.mine.id); return !e||e.status==="waiting"||e.status==="pending"||e.status==="offered" }
+const mineBox=()=>{ const e=mineActive()&&S.mine?S.entries.find(x=>x.id===S.mine.id):null;
+  return `<div id="minebox">${e&&e.status==="offered"?`<button class="btn" id="myspot2" style="width:100%">Set ${e.set} ended: move to Set ${e.offeredFor}?</button>`:mineActive()?`<button class="btn" id="myspot2" style="width:100%">← Back to my spot in line</button>`:""}</div>` };
 function bindMine(){ const m=$("#myspot2"); if(m) m.onclick=()=>{ go("ticket"); refresh(); poll(5000) } }
 function vSongs(){
   return `<div class="topbar"><span class="pill">${VENUES[S.loc].name} · tonight</span><button class="linkbtn" id="back">Change location</button></div>
@@ -253,7 +270,7 @@ function vSongs(){
   <ul class="list" id="list"></ul>`;
 }
 bind.songs = ()=>{
-  $("#back").onclick=()=>{poll(0);go("venues")}; bindMine();
+  $("#back").onclick=()=>{poll(0);store.set("lbk-checkin",null);S.geo=null;go("venues")}; bindMine(); freshGeo();
   const q=$("#q"); q.oninput=()=>{S.q=q.value;drawList()};
   refresh(); poll(15000);
   $$(".seg button").forEach(b=>b.onclick=()=>{S.by=b.dataset.by;render()});
@@ -305,8 +322,9 @@ function openSignup(r){
     }catch(err){
       if(err.taken||err.closed){ refresh() }
       if(err.id){ S.mine={id:err.id,loc:S.loc,night:S.settings.night}; store.set("lbk-mine",S.mine) }
-      $("#err").innerHTML=esc(err.error)+(err.id?` <button type="button" class="linkbtn" id="see">See my spot</button>`:"");
+      $("#err").innerHTML=esc(err.error)+(err.id?` <button type="button" class="linkbtn" id="see">See my spot</button>`:"")+(err.status===403?` <button type="button" class="linkbtn" id="recheck">Check my location again</button>`:"");
       const s=$("#see"); if(s) s.onclick=()=>{el.remove();go("ticket");refresh();poll(5000)};
+      const rc=$("#recheck"); if(rc) rc.onclick=()=>{ const l=S.loc; el.remove(); store.set("lbk-checkin",null); poll(0); go("venues"); checkLoc(l) };
       $("#go").disabled=false; $("#go").textContent="Get in line";
     }
   };
@@ -464,10 +482,14 @@ function vTicket(){
   const me=S.entries.find(r=>S.mine&&r.id===S.mine.id);
   const act=S.entries.filter(r=>r.status==="waiting").sort(byOrder), ix=act.findIndex(r=>me&&r.id===me.id);
   const pl=me?placeOf(me):null;
-  let big,line,eyebrow=VENUES[S.loc].name,backupMoved=false;
+  let big,line,eyebrow=VENUES[S.loc].name,backupMoved=false,offer=false;
   if(!S.night){big='<span class="spin"></span>';line="Finding your spot…"}
   else if(!me){big="?";line="We couldn't find your sign-up. Check with the host at the stage."}
   else if(me.status==="done"){big="★";line="You crushed it! Sign up again when the next set's sign-up opens."}
+  else if(me.status==="offered"){eyebrow+=` · Set ${me.set}`;big="?";offer=true;
+    line=`<b>Set ${me.set} ended before your turn.</b> Want to move <b>${esc(me.song)}</b> to <b>Set ${me.offeredFor}</b>? You'll go into the first 5 singers.`}
+  else if(me.status==="skipped"&&me.declined){big="–";line="No problem. Pick another song whenever you're ready."}
+  else if(me.status==="skipped"&&/^Set \d ended$/.test(me.by||"")){big="♪";line=`Set ${me.set} was the last set tonight and it ended before your turn. Thanks for coming out, and catch you next Wednesday!`}
   else if(me.status==="skipped"&&me.left){big="👋";line="You're off the list. Thanks for coming out! Changed your mind? Pick a song to sign up again."}
   else if(me.status==="skipped"&&me.payCancelled){big="–";line="You cancelled that payment, so you're not in line for this song. Pick another song whenever you're ready."}
   else if(me.status==="skipped"&&me.payExpired){big="–";line="Your payment wasn't finished, so we let your spot go. You can pick the song again if it's still open."}
@@ -488,6 +510,8 @@ function vTicket(){
   return `${brand}<span class="eyebrow">${eyebrow}</span>
   <div class="ticket"><div class="num grad">${big}</div><p style="font-size:1.1rem">${line}</p>
   ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}</div>
+  ${offer?`<div class="offer"><div class="row"><button class="btn ghost" id="mvno">No thanks</button><button class="btn" id="mvyes">Yes, move me</button></div><p class="muted" id="mverr" role="alert"></p></div>`:""}
+  ${me&&me.moved&&me.status==="waiting"?`<div class="status ok"><span><b>You moved up to Set ${me.set}.</b> You're in the first few singers.</span></div>`:""}
   ${me&&me.status==="waiting"?skipBlock(me,ix):""}
   ${me&&me.status==="waiting"?tipCard():""}
   ${me&&me.status==="pending"&&me.repeatReq?.square?`<div class="row">${me.payUrl?`<a class="btn" href="${esc(me.payUrl)}">Finish paying</a>`:""}<button class="btn ghost" id="paychk">Check again</button></div><button class="linkbtn" id="paycx">Cancel and pick a different song</button>`:""}
@@ -513,6 +537,12 @@ bind.ticket=()=>{
   const chk=$("#paychk"); if(chk) chk.onclick=async()=>{ chk.disabled=true; await payCheck(); };
   const pcx=$("#paycx"); if(pcx) pcx.onclick=async()=>{ pcx.disabled=true; try{ const r=await api("paycancel",{body:{loc:S.loc,id:S.mine.id,device}}); S.entries=r.entries; S.sheet=r.sheet }catch(e){ S.lastErr=e.error } render() };
   const lv=$("#leave"); if(lv) lv.onclick=()=>{ const me=S.entries.find(r=>S.mine&&r.id===S.mine.id); if(me) openLeave(me) };
+  const my=S.entries.find(r=>S.mine&&r.id===S.mine.id);
+  if(my&&my.status==="offered"&&S.buzzed!==my.id){ S.buzzed=my.id; try{ navigator.vibrate&&navigator.vibrate([200,100,200]) }catch(e){} } // Android buzzes; iPhone just shows it
+  const answer=async yes=>{ $("#mvyes").disabled=$("#mvno").disabled=true;
+    try{ const r=await api("moveup",{body:{loc:S.loc,id:S.mine.id,device,yes}}); S.entries=r.entries; S.sheet=r.sheet; S.ended=r.ended||[]; render() }
+    catch(e){ $("#mverr").textContent=e.error; $("#mvyes").disabled=$("#mvno").disabled=false } };
+  const my1=$("#mvyes"); if(my1){ my1.onclick=()=>answer(true); $("#mvno").onclick=()=>answer(false) }
   const sb=$("#skipbtn"); if(sb) sb.onclick=()=>{ const me=S.entries.find(r=>S.mine&&r.id===S.mine.id); if(me) openSkip(me) }; const nt=$("#nexttip"); if(nt) nt.onclick=()=>{showTip(1); startTips()}; if(!tipTimer) startTips(); $("#more").onclick=()=>{poll(0);go("songs")} };
 
 // ---------------- hosts ----------------
@@ -579,7 +609,7 @@ bind.hostloc=()=>{ bindBar(); $$(".venue").forEach(b=>b.onclick=()=>enterLoc(b.d
 async function enterLoc(loc,takeover){
   try{
     const r=await api("claim",{body:{token:S.token,loc,takeover:!!takeover}});
-    S.hostLoc=loc; store.set("lbk-hostloc",loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.actionErr="";
+    S.hostLoc=loc; store.set("lbk-hostloc",loc); S.entries=r.entries; S.night=r.night; S.sheet=r.sheet; S.ended=r.ended||[]; S.actionErr="";
     go("host"); startHost();
   }catch(e){
     if(e.status===401){ logout(); return }
@@ -607,13 +637,15 @@ function nightLabel(){ const n=S.night||S.settings?.night; return n?new Date(n+"
 function startHost(){ refresh(); poll(3000) }
 function vHost(){
   // Pending repeat songs show in their held spot with a gold box, but aren't "now" or "on deck" until a host confirms the payment.
-  const all=S.entries.slice().sort(byOrder), act=all.filter(r=>r.status==="waiting"||r.status==="pending"), past=all.filter(r=>r.status!=="waiting"&&r.status!=="pending").sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
-  const sang=past.filter(r=>r.status==="done").length, sk=past.length-sang, sh=S.sheet;
+  const all=S.entries.slice().sort(byOrder), act=all.filter(r=>r.status==="waiting"||r.status==="pending"), past=all.filter(r=>r.status!=="waiting"&&r.status!=="pending").sort((a,b)=>(a.set-b.set)||(b.doneAt||"").localeCompare(a.doneAt||""));
+  const sang=past.filter(r=>r.status==="done").length, offered=past.filter(r=>r.status==="offered"), sk=past.length-sang-offered.length, sh=S.sheet, ended=S.ended||[];
+  // The set on stage: the earliest set that still has someone waiting.
+  const stageSet=(act.filter(r=>r.status==="waiting").map(r=>r.set).sort((a,b)=>a-b)[0])||(sh?sh.set:1);
   const singersWaiting=act.filter(r=>r.status==="waiting"&&placeOf(r)?.singer);
   const item=(r,i,list)=>{ const pl=placeOf(r)||{singer:true,spot:i+1}, g=singersWaiting.indexOf(r);
-    return `<li class="${g===0?"now":""}"><span class="pos">${pl.jumped?"$":pl.singer?pl.spot:"B"+pl.spot}</span>
-    <span class="who">${esc(r.name)}<span class="tag ${r.sung?"deck":"done"}" title="Songs sung tonight">${r.sung?`Sung ${r.sung}×`:"1st song"}</span>${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.jumped?`<span class="tag done">Paid skip${r.payVia==="Cash"?" · cash":""}</span>`:pl.singer?"":'<span class="tag deck">Backup</span>'}${r.repeatPaid?`<span class="tag done">Repeat song${r.payVia==="Cash"?" · cash":""}</span>`:r.status==="pending"?'<span class="tag">Repeat · paying</span>':""}${r.override?`<span class="tag deck">Put back by ${esc(r.override)}</span>`:""}</span>
-    <span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· ${fmtTime(r.at)}</span></span>
+    return `<li class="${g===0?"now":""}${r.vip?" vip":""}"><span class="pos">${pl.vip?"VIP":pl.moved?"↑":pl.jumped?"$":pl.singer?pl.spot:"B"+pl.spot}</span>
+    <span class="who">${esc(r.name)}<span class="tag ${r.sung?"deck":"done"}" title="Songs sung tonight">${r.sung?`Sung ${r.sung}×`:"1st song"}</span>${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${pl.vip?`<span class="tag vip">VIP${r.addedBy?" · "+esc(r.addedBy):""}</span>`:pl.moved?`<span class="tag moved">Moved up from Set ${r.movedFrom||r.set-1}</span>`:pl.jumped?`<span class="tag done">Paid skip${r.payVia==="Cash"?" · cash":""}</span>`:pl.singer?"":'<span class="tag deck">Backup</span>'}${r.repeatPaid?`<span class="tag done">Repeat song${r.payVia==="Cash"?" · cash":""}</span>`:r.status==="pending"?'<span class="tag">Repeat · paying</span>':""}${r.override?`<span class="tag deck">Put back by ${esc(r.override)}</span>`:""}</span>
+    <span class="what">${esc(r.song)}${r.artist?` · ${esc(r.artist)}`:""} <span class="a">· ${fmtTime(r.at)}</span></span>
     ${r.skipReq&&r.skipReq.square?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Paying $${pay().fee} to skip with Square</b> (started ${fmtTime(r.skipReq.at)}). They'll move up by themselves once it goes through.</span><div class="row"><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Cancel skip</button></div></div></div>`
     :r.skipReq&&r.skipReq.method==="Cash"?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>💵 Wants to pay $${pay().fee} cash to skip to next</b> (${fmtTime(r.skipReq.at)}). ${esc(r.name)} is bringing it to you.</span><div class="row"><button class="btn small" data-a="jump" data-cash="1" data-id="${r.id}">Got the cash, move to next</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`
     :r.skipReq?`<div class="acts" style="flex-direction:column;align-items:stretch"><div class="status" style="border-color:var(--gold)"><span><b>Says they paid $${pay().fee} via ${esc(r.skipReq.method)}</b> at ${fmtTime(r.skipReq.at)}. ${r.skipReq.method==="Venmo"?`Ask ${esc(r.name)} to show you the Venmo payment on their phone.`:`Check for a payment from ${esc(r.name)}.`}</span><div class="row"><button class="btn small" data-a="jump" data-id="${r.id}">Move to next</button><button class="btn small ghost" data-a="jump" data-cash="1" data-id="${r.id}">Paid cash</button><button class="btn small ghost" data-a="nopay" data-id="${r.id}">Not paid</button></div></div></div>`:""}
@@ -625,8 +657,10 @@ function vHost(){
     <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===list.length-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
     <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div>`}</li>`; };
   const sets=[1,2,3].filter(s=>all.some(r=>r.set===s)||(sh&&s<=sh.set));
-  const setBlock=s=>{ const w=act.filter(r=>r.set===s), kept=all.filter(r=>r.set===s&&r.status!=="skipped"&&!r.jumped).length, n=sh?.singers||12;
-    return `<div style="display:flex;flex-direction:column;gap:8px"><div class="topbar"><h3>Set ${s} · ${SET_TIMES[s]}</h3><span class="muted" style="font-size:.9rem;font-variant-numeric:tabular-nums">${Math.min(kept,n)} of ${n} singers${kept>n?` · ${kept-n} backup${kept-n===1?"":"s"}`:""}</span></div>
+  const setBlock=s=>{ const w=act.filter(r=>r.set===s), kept=all.filter(r=>r.set===s&&r.status!=="skipped"&&!bonusOf(r)).length, n=sh?.singers||12;
+    const vips=w.filter(r=>r.vip).length, movers=w.filter(r=>r.moved).length;
+    return `<div style="display:flex;flex-direction:column;gap:8px"><div class="topbar"><h3>Set ${s} · ${SET_TIMES[s]}${ended.includes(s)?' <span class="tag deck">Ended</span>':""}</h3><span class="muted" style="font-size:.9rem;font-variant-numeric:tabular-nums">${Math.min(kept,n)} of ${n} singers${kept>n?` · ${kept-n} backup${kept-n===1?"":"s"}`:""}${movers?` · ${movers} moved up`:""}${vips?` · ${vips} VIP`:""}</span></div>
+    ${s===stageSet&&w.length&&!ended.includes(s)?`<div class="row"><button class="btn small ghost" id="endset" data-set="${s}">End Set ${s}</button></div>`:""}
     ${w.length?`<ol class="q">${w.map((r,i)=>item(r,i,w)).join("")}</ol>`:`<div class="empty">${kept?"Everyone in this set has had a turn.":"No sign-ups yet."}</div>`}</div>`; };
   let ctl="";
   if(sh){
@@ -641,13 +675,14 @@ function vHost(){
   }
   return `${hostBar(" · "+VENUES[S.hostLoc].name)}
   <div><h2>${nightLabel()}</h2><p class="muted" style="font-variant-numeric:tabular-nums">${S.night?`${all.length} sign-ups · ${act.length} in line · ${sang} sang${sk?` · ${sk} skipped`:""}`:'<span class="spin"></span> Loading the list…'}</p></div>
-  <div class="row"><button class="btn small ghost" id="sw">Switch location</button></div>
+  <div class="row"><button class="btn small" id="addvip">+ Add VIP</button><button class="btn small ghost" id="sw">Switch location</button></div>
   ${ctl}
   ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
   ${(()=>{ const n=act.filter(r=>(r.skipReq&&!r.skipReq.square)||(r.status==="pending"&&!r.repeatReq?.square)).length; return n?`<div class="status" style="border-color:var(--gold)"><span><b>${n} payment${n===1?"":"s"}</b> (paid skips or repeat songs) waiting for you to check. Look for the gold boxes below.</span></div>`:"" })()}
   ${S.lastErr?`<p class="note">${esc(S.lastErr)} The list may be out of date.</p>`:""}
+  ${offered.length?`<div class="status" style="border-color:var(--orange)"><span><b>${offered.length} backup${offered.length===1?"":"s"} asked to move up</b> (${offered.map(r=>esc(r.name)).join(", ")}). Their phones are asking now. Until they answer, they're in Already sang. You can also move them yourself there.</span></div>`:""}
   ${S.night?sets.map(setBlock).join(""):""}
-  ${past.length?`<details class="past" id="pastbox" ${S.pastOpen?"open":""}><summary><h3>Already sang <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:600">(${past.length})</span></h3></summary><ol class="q done">${past.map(r=>`<li><span class="pos">${r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${r.status==="done"?"Sang":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":"Skipped"}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)} <span class="a">· Set ${r.set} · ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol></details>`:""}
+  ${past.length?`<details class="past" id="pastbox" ${S.pastOpen||offered.length?"open":""}><summary><h3>Already sang <span class="muted" style="letter-spacing:0;text-transform:none;font-weight:600">(${past.length})</span></h3></summary>${[...new Set(past.map(r=>r.set))].map(st=>`<p class="pastset">Set ${st}</p><ol class="q done">${past.filter(r=>r.set===st).map(r=>`<li${r.status==="offered"?' style="opacity:1"':""}><span class="pos">${r.vip?"VIP":r.status==="offered"?(placeOf(r)&&!placeOf(r).singer?"B"+placeOf(r).spot:"?"):r.set}</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":r.status==="offered"?"moved":"skip"}">${r.status==="done"?"Sang":r.status==="offered"?`Asked to move to Set ${r.offeredFor}`:r.declined?"Passed":r.left?"Left":r.payCancelled?"Cancelled":r.payExpired?"Didn't pay":r.repeatDenied?"Not paid":/^Set \d ended$/.test(r.by||"")?"Didn't get up":"Skipped"}</span>${r.vip?'<span class="tag vip">VIP</span>':""}</span><span class="what">${esc(r.song)}${r.artist?` · ${esc(r.artist)}`:""} <span class="a">· ${esc(r.by||"")} ${fmtTime(r.doneAt)}</span></span><div class="acts">${r.status==="offered"?`<button class="btn small" data-a="moveup" data-id="${r.id}">Move to Set ${r.offeredFor}</button>`:""}<button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol>`).join("")}</details>`:""}
   ${testNote()}
   ${S.night?`<div style="border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:8px"><h3>Start over</h3><p class="muted" style="font-size:.9rem">Clears every sign-up at ${VENUES[S.hostLoc].name} tonight and restarts sign-up at Set 1. Paid skips and repeat songs stay in the payment report.</p><button class="btn ghost" id="clearq" style="border-color:var(--warn);color:var(--warn)">Clear tonight's list</button></div>`:""}`;
 }
@@ -671,13 +706,51 @@ bind.host=()=>{
   bindBar(); $("#sw").onclick=()=>{poll(0);go("hostloc")};
   const run=async(path,body,btn)=>{
     $$("[data-a],[data-sheet]").forEach(x=>x.disabled=true); S.actionErr="";
-    try{ const r=await api(path,{body:{token:S.token,loc:S.hostLoc,...body}}); S.entries=r.entries; S.sheet=r.sheet; S.lastErr="" }
+    try{ const r=await api(path,{body:{token:S.token,loc:S.hostLoc,...body}}); S.entries=r.entries; S.sheet=r.sheet; S.ended=r.ended||[]; S.lastErr="" }
     catch(e){ if(e.status===401){logout();return} if(e.kicked){ kicked(e.by); return } S.actionErr=e.error }
     render();
   };
   $$("[data-a]").forEach(b=>b.onclick=()=>run("host",{id:b.dataset.id,action:b.dataset.a,cash:b.dataset.cash==="1"}));
   $$("[data-sheet]").forEach(b=>b.onclick=()=>run("sheet",{op:b.dataset.sheet}));
+  const es=$("#endset"); if(es) es.onclick=()=>openEndSet(+es.dataset.set,run);
+  $("#addvip").onclick=()=>openVip(run);
 };
+// End the set on stage. Backups (B1-B3) still waiting are asked on their phones whether to move to the next set's first 5.
+function openEndSet(set,run){
+  const w=S.entries.filter(r=>r.set===set&&r.status==="waiting").sort(byOrder);
+  const backups=w.filter(r=>{const p=placeOf(r);return p&&!p.singer}), vips=w.filter(r=>r.vip), singers=w.filter(r=>!r.vip&&!backups.includes(r));
+  const nx=set<3?set+1:null, names=l=>l.map(r=>esc(r.name)).join(", ");
+  const el=sheet(`<form id="es"><span class="eyebrow">End Set ${set}</span>
+    ${backups.length?`<p>${nx?`<b>${backups.length} backup${backups.length===1?"":"s"}</b> (${names(backups)}) will be asked on their phone if they want to move to <b>Set ${nx}</b>'s first 5 singers. They go to Already sang until they answer.`:`<b>${backups.length} backup${backups.length===1?"":"s"}</b> (${names(backups)}) didn't get up. Set 3 is the last set, so they go to Already sang.`}</p>`:`<p>No backups are waiting in Set ${set}.</p>`}
+    ${vips.length&&nx?`<p class="muted">${vips.length} VIP${vips.length===1?"":"s"} (${names(vips)}) will move to the top of Set ${nx}.</p>`:""}
+    ${singers.length?`<p class="muted">${singers.length} of the 12 singer${singers.length===1?"":"s"} (${names(singers)}) haven't sung yet. They stay in line.</p>`:""}
+    <button class="btn" id="esgo">End Set ${set}</button><button type="button" class="btn ghost" id="cx">Cancel</button></form>`);
+  $("#cx").onclick=()=>el.remove();
+  $("#es").onsubmit=e=>{ e.preventDefault(); el.remove(); S.pastOpen=true; run("sheet",{op:"endSet",set}) };
+}
+// VIP: any name, any song, any set, wherever the host wants. A bonus spot that never gets a phone prompt.
+function openVip(run){
+  const lowest=(S.entries.filter(r=>r.status==="waiting").map(r=>r.set).sort((a,b)=>a-b)[0])||(S.sheet?S.sheet.set:1);
+  const sets=[1,2,3].filter(n=>n>=lowest);
+  const el=sheet(`<form id="vf"><span class="eyebrow">Add a VIP</span>
+    <p class="muted" style="font-size:.95rem">Any name, any song. VIPs are bonus spots: they don't take one of the 12 singer or 3 backup spots, and they never get a phone prompt.</p>
+    <div class="field"><label for="vn">Name</label><input id="vn" maxlength="30" required autocomplete="off"></div>
+    <div class="field"><label for="vs">Song</label><input id="vs" maxlength="120" required autocomplete="off" list="vsongs"><datalist id="vsongs">${LIB.map(r=>`<option value="${esc(r.t)}">${esc(r.a)}</option>`).join("")}</datalist></div>
+    <div class="field"><label for="va">Artist (optional)</label><input id="va" maxlength="120" autocomplete="off"></div>
+    <div class="row"><div class="field" style="flex:1 1 120px"><label for="vset">Set</label><select id="vset">${sets.map(n=>`<option value="${n}">Set ${n}${n===lowest?" (now)":""}</option>`).join("")}</select></div>
+      <div class="field" style="flex:2 1 190px"><label for="vpos">Where in the set</label><select id="vpos"></select></div></div>
+    <button class="btn" id="vgo">Add VIP</button><button type="button" class="btn ghost" id="cx">Cancel</button>
+    <p class="muted" id="verr" role="alert"></p></form>`);
+  $("#cx").onclick=()=>el.remove();
+  const fill=()=>{ const n=+$("#vset").value, w=S.entries.filter(r=>r.set===n&&r.status==="waiting").sort(byOrder);
+    $("#vpos").innerHTML=(w.length?`<option value="top">At the top of Set ${n}</option>`:"")+w.map((r,i)=>`<option value="${r.id}">After ${esc(r.name)}${i===0&&n===lowest?" (up next)":""}</option>`).join("")+`<option value="end" selected>At the end of Set ${n}</option>`; };
+  $("#vset").onchange=fill; fill();
+  $("#vs").addEventListener("change",()=>{ const m=LIB.filter(r=>r.t.toLowerCase()===$("#vs").value.trim().toLowerCase()); if(m.length===1&&!$("#va").value) $("#va").value=m[0].a });
+  setTimeout(()=>{const n=$("#vn"); if(n) n.focus()},60);
+  $("#vf").onsubmit=e=>{ e.preventDefault(); const name=$("#vn").value.trim(), song=$("#vs").value.trim(); if(!name||!song){ $("#verr").textContent="Add a name and a song."; return }
+    const body={action:"vip",name,song,artist:$("#va").value.trim(),set:+$("#vset").value,after:$("#vpos").value};
+    el.remove(); run("host",body) };
+}
 async function openManage(){ poll(0); go("manage"); try{ S.hosts=(await api("hosts")).hosts }catch(e){} try{ S.adminPay=(await admin({op:"paymentsInfo"})).payments }catch(e){} render() }
 async function reloadSettings(){ try{ S.settings=await api("settings") }catch(e){} }
 function vManage(){
@@ -761,6 +834,10 @@ bind.manage=()=>{
     $("#sv").onclick=async()=>{ try{ await admin({op:"setPin",id:h.id,pin:$("#np").value.trim()}); if(h.admin){ logout(); openLogin(); return } render() }catch(e){ $("#pe").textContent=e.error } } });
 };
 
+document.addEventListener("focusin",e=>{ const t=e.target; if(!t.closest||!t.closest(".sheet")) return; setTimeout(()=>{ try{ t.scrollIntoView({block:"center",behavior:"smooth"}) }catch(_){} },300) });
+if(window.visualViewport){ const fit=()=>$$(".sheet").forEach(sh=>{ sh.style.height=visualViewport.height+"px"; sh.style.top=visualViewport.offsetTop+"px" });
+  visualViewport.addEventListener("resize",fit); visualViewport.addEventListener("scroll",fit); new MutationObserver(fit).observe(document.body,{childList:true}) }
+
 // ---------------- start ----------------
 (async()=>{
   try{ S.settings=await api("settings") }catch(e){ S.settings={testMode:false,night:null} }
@@ -771,7 +848,9 @@ bind.manage=()=>{
   const back=new URLSearchParams(location.search);
   if(back.has("paid")){ history.replaceState(null,"",location.pathname);
     if(VENUES[back.get("loc")]){ S.mine={...(S.mine||{}),id:back.get("paid"),loc:back.get("loc"),night:S.settings.night}; store.set("lbk-mine",S.mine) } }
-  if(S.mine && S.mine.night===S.settings.night){ S.loc=S.mine.loc; go("ticket"); if(back.has("paid")) payCheck(); else refresh(); poll(5000); return }
+  const ci=checkin();
+  if(S.mine && S.mine.night===S.settings.night){ S.loc=S.mine.loc; if(ci&&ci.loc===S.loc&&ci.lat!=null) S.geo={lat:ci.lat,lng:ci.lng,acc:ci.acc}; go("ticket"); if(back.has("paid")) payCheck(); else refresh(); poll(5000); return }
+  if(ci){ S.loc=ci.loc; S.geo=ci.lat!=null?{lat:ci.lat,lng:ci.lng,acc:ci.acc}:null; go("songs"); return }
   render();
 })();
 </script>
