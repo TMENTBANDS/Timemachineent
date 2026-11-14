@@ -218,6 +218,7 @@ views.songs = {
   html(){
     const m=mine();
     return `<div class="topbar"><span class="pill">${esc(eventName())}</span>${m?`<button class="linkbtn" id="myspot">My spot</button>`:""}</div>
+    ${S.line&&S.line.paused?`<p class="status">Sign-ups are paused right now. Browse the songbook and check back in a bit!</p>`:""}
     <h2>Find your <span class="grad">song</span></h2>
     <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
@@ -252,11 +253,11 @@ function drawList(){
 }
 function myEntry(){ const m=mine(); return m&&S.line ? S.line.entries.find(x=>x.id===m.id) : null }
 function openSignup(r){
-  const me=myEntry(), busy=me&&(me.status==="waiting"||me.status==="offered");
+  const me=myEntry(), busy=(me&&(me.status==="waiting"||me.status==="offered"))||(S.line&&S.line.paused);
   const el=document.createElement("div"); el.className="sheet";
   el.innerHTML=`<form id="f"><span class="eyebrow">Sign up to sing</span>
     <div><div class="t" style="font-size:1.25rem">${esc(r.t)}</div><div class="a">${esc(r.a)}</div></div>
-    ${busy?`<p class="status bad">You're already in line with ${esc(me.song)}. Once you've sung, you can sign up again.</p>`:""}
+    ${S.line&&S.line.paused?`<p class="status bad">Sign-ups are paused right now. Check back in a bit!</p>`:busy?`<p class="status bad">You're already in line with ${esc(me.song)}. Once you've sung, you can sign up again.</p>`:""}
     <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
     <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go" ${busy?"disabled":""}>Get in line</button></div>
     <p class="muted" id="err" role="alert" style="font-size:.95rem"></p></form>`;
@@ -301,14 +302,13 @@ views.ticket = {
     else if(ix===1){big="#2";line="You're on deck. Get close to the stage."}
     else {big="#"+(ix+1);line=`${ix} singers ahead of you`}
     const waiting=me&&me.status==="waiting";
-    const extra=waiting&&!me.vip&&!me.rolled&&me.spot>L.setReg;
     return `${brand}<div class="ticket"><span class="eyebrow">${nm}</span>
       <div class="num grad">${big}</div><p>${line}</p>
       ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}
-      ${waiting?`<p class="a">Set ${me.set}${me.set>L.currentSet?" (coming up)":""}${me.vip?"":` · spot ${me.spot} of ${L.setCap}`}</p>`:""}
-      ${extra?`<p class="note" style="text-align:left">You're one of this set's 3 extra spots. If the set ends before your turn, this page will ask if you want to move to the next set.</p>`:""}</div>
+      ${waiting?`<p class="a">Set ${me.set}${me.set>L.currentSet?" (coming up)":""}${me.vip?"":` · spot ${me.spot}`}</p>`:""}
+      ${waiting&&!me.vip?`<p class="note" style="text-align:left">If the set ends before your turn, this page will ask if you want to move to the next set.</p>`:""}</div>
       ${S.stale?`<p class="note">Can't reach the list right now. Your spot is saved; this page will catch up.</p>`:`<p class="muted" style="text-align:center">This page updates on its own. Keep it open.</p>`}
-      ${waiting?`<button class="btn ghost" id="more">Browse the songbook</button>`:L&&L.event.status!=="closed"?`<button class="btn" id="more">Sign up for another song</button>`:""}
+      ${waiting?`<button class="btn ghost" id="more">Browse the songbook</button>`:L&&L.event.status!=="closed"?(L.paused?`<p class="status">Sign-ups are paused right now. Check back in a bit!</p><button class="btn ghost" id="more">Browse the songbook</button>`:`<button class="btn" id="more">Sign up for another song</button>`):""}
       ${waiting?`<div class="foot"><button class="linkbtn" id="leave">I'm leaving: take me off the list</button></div>`:""}`;
   },
   bind(){
@@ -475,14 +475,14 @@ views.host = {
     let gi=0;
     const item=(r,i,n)=>{const g=gi++;
       return `<li class="${g===0?"now":""}${r.vip?" vip":""}"><span class="pos">${r.vip?"VIP":r.spot}</span>
-      <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${r.vip?'<span class="tag vip">VIP</span>':r.rolled?'<span class="tag moved">Moved up</span>':r.spot>L.setReg?'<span class="tag extra">Extra</span>':""}</span>
+      <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${r.vip?'<span class="tag vip">VIP</span>':r.rolled?'<span class="tag moved">Moved up</span>':""}</span>
       <span class="what">${esc(r.song)}${r.artist?` · ${esc(r.artist)}`:""} <span class="a">· ${r.vip?`added by ${esc(r.by||"host")}`:`signed up ${fmtTime(r.at)}`}</span></span>
       <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
       <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
       <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===n-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
       <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`};
     const setBlock=n=>{const rows=act.filter(r=>r.set===n), filled=all.filter(r=>r.set===n&&!r.vip&&r.status!=="declined"&&r.status!=="left").length, vips=rows.filter(r=>r.vip).length;
-      return `<div class="sethead"><h2>Set ${n}${n===cur?' <span class="grad">· now</span>':""}</h2><span class="muted" style="font-size:.9rem">${filled} of ${L.setCap} spots${vips?` + ${vips} VIP`:""}</span></div>
+      return `<div class="sethead"><h2>Set ${n}${n===cur?' <span class="grad">· now</span>':""}</h2><span class="muted" style="font-size:.9rem">${filled} signed up${vips?` + ${vips} VIP`:""}</span></div>
       ${n===cur?`<div class="row" id="endbox"><button class="btn small" id="addvip">+ Add VIP</button><button class="btn small ghost" id="endset">End Set ${cur}</button></div>`:""}
       ${rows.length?`<ol class="q">${rows.map((r,i)=>item(r,i,rows.length)).join("")}</ol>`:`<div class="empty">${n===cur?"No one left in line for this set.":"Empty."}</div>`}`};
     const pastLabel=r=>r.status==="done"?"Sang":r.status==="declined"?"Passed":r.status==="left"?"Left":"Skipped";
@@ -491,7 +491,9 @@ views.host = {
     <div style="display:flex;flex-direction:column;gap:6px"><h2>${esc(ev.name)}</h2>
     <p class="muted">${fmtDate(ev.date)}${ev.venue?` · ${esc(ev.venue)}`:""} · Code ${ev.id}${ev.status==="closed"?' <span class="tag skip">Sign-ups closed</span>':""}</p>
     <p class="muted" style="font-variant-numeric:tabular-nums">${all.length} sign-up${all.length===1?"":"s"} · ${act.length} in line · ${sang} sang</p></div>
-    <p class="note">Each set has ${L.setReg} spots plus 3 extras (13–15). VIPs are bonus spots. When you end a set, anyone who didn't get up is asked on their phone if they want to move to the next set's first 5.</p>
+    <p class="note">No limit on sign-ups: pause them whenever the set is full enough, and unpause when you're ready for more. VIPs are bonus spots. When you end a set, anyone who didn't get up is asked on their phone if they want to move to the next set's first 5.</p>
+    <div class="toggle"><div><b>${L.paused?"Sign-ups are paused":"Sign-ups are open"}</b><br><span class="muted" style="font-size:.9rem">${L.paused?"Guests can browse songs but can't get in line.":"Guests can scan and get in line."}</span></div>
+      <button class="btn small${L.paused?"":" ghost"}" id="pausebtn">${L.paused?"Unpause":"Pause sign-ups"}</button></div>
     ${S.stale?`<p class="status bad">Can't reach the list right now. What you see may be out of date.</p>`:""}
     ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
     ${offered.length?`<h3>Waiting on their answer</h3><ol class="q">${offered.map(r=>`<li><span class="pos">?</span><span class="who">${esc(r.name)}<span class="tag extra">From Set ${r.set}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)}</span><div class="acts"><button class="btn small" data-a="move" data-id="${r.id}">Move to next set</button><button class="btn small ghost" data-a="drop" data-id="${r.id}">Remove</button></div></li>`).join("")}</ol>`:""}
@@ -506,6 +508,7 @@ views.host = {
       try{ S.line=await api("host",{body:{code:S.hostCode,...body}}); S.actionErr="" }catch(e){ if(needLogin(e)) return; S.actionErr=e.error||"That didn't go through. Try again." } render(true) };
     $$("[data-a]").forEach(b=>b.onclick=()=>send({action:b.dataset.a,id:b.dataset.id},b));
     const av=$("#addvip"); if(av) av.onclick=()=>openVip(send);
+    const pb=$("#pausebtn"); if(pb) pb.onclick=()=>send({action:S.line.paused?"resume":"pause"},pb);
     const es=$("#endset"); if(es) es.onclick=()=>{
       const L=S.line, cur=L.currentSet, inCur=L.entries.filter(r=>r.status==="waiting"&&r.set===cur), left=inCur.filter(r=>!r.vip).length, vips=inCur.length-left;
       $("#endbox").innerHTML=`<span class="muted">End Set ${cur}?${left?` ${left} still in line will be asked to move to Set ${cur+1}.`:""}${vips?` ${vips} VIP${vips>1?"s":""} carry over to Set ${cur+1}.`:""}</span><button class="btn small" id="endyes">End set</button><button class="btn small ghost" id="endno">Cancel</button>`;

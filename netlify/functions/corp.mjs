@@ -5,8 +5,8 @@
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
-const SET_REG = 12, SET_CAP = 15; // 12 singers + 3 extras per set
-const ROLL_TOP = 5;               // extras who move to the next set land in its first 5
+// No limit on how many people sign up for a set; hosts pause and unpause sign-ups instead.
+const ROLL_TOP = 5;               // singers who move to the next set land in its first 5
 const MAX_PER_EVENT = 500;
 const CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
@@ -59,9 +59,8 @@ const eventView = (e) => ({ id: e.id, name: e.name, date: e.date, venue: e.venue
 const setOf = (e) => e.set || 1;
 const sorted = (d) => d.entries.slice().sort((a, b) => (setOf(a) - setOf(b)) || (a.pos - b.pos));
 const waitingIn = (d, n) => sorted(d).filter((x) => x.status === "waiting" && setOf(x) === n);
-// The 15 spots of a set: everyone who signed up for it except VIPs (bonus spots) and people who passed.
+// Spot numbers in a set: everyone who signed up for it except VIPs (bonus spots) and people who passed or left.
 const spotsIn = (d, n) => sorted(d).filter((x) => setOf(x) === n && !x.vip && x.status !== "declined" && x.status !== "left");
-function openSet(d) { let n = d.currentSet || 1; while (spotsIn(d, n).length >= SET_CAP) n++; return n; }
 function posAt(d, n, k) {
   const act = waitingIn(d, n);
   if (!act.length) return Date.now();
@@ -82,7 +81,7 @@ function moveUp(d, e) {
 const pub = (e, d) => ({ id: e.id, name: e.name, song: e.song, artist: e.artist, status: e.status, set: setOf(e), pos: e.pos,
   at: e.at, by: e.by || null, doneAt: e.doneAt || null, vip: !!e.vip, rolled: !!e.rolled, offeredFor: e.offeredFor || null,
   spot: e.vip ? null : spotsIn(d, setOf(e)).findIndex((x) => x.id === e.id) + 1 });
-const lineView = (ev, d) => ({ event: eventView(ev), currentSet: d.currentSet || 1, setReg: SET_REG, setCap: SET_CAP,
+const lineView = (ev, d) => ({ event: eventView(ev), currentSet: d.currentSet || 1, paused: !!d.paused,
   entries: sorted(d).map((e) => pub(e, d)) });
 
 export default async (req) => {
@@ -107,10 +106,11 @@ export default async (req) => {
       const name = clean(body.name, 30), song = clean(body.song, 120), artist = clean(body.artist, 120), device = clean(body.device, 64);
       if (!name || !song || !device) return fail("Add your name and pick a song.");
       const out = await update(linePath(code), { entries: [], currentSet: 1 }, (d) => {
+        if (d.paused) return { __error: "Sign-ups are paused right now. Check back in a bit!", status: 409, paused: true };
         if (d.entries.length >= MAX_PER_EVENT) return { __error: "The list is full. See the host at the stage.", status: 409 };
         const mine = d.entries.find((x) => x.device === device && (x.status === "waiting" || x.status === "offered"));
         if (mine) return { __error: "You're already in line with " + mine.song + ". Once you've sung, you can sign up again.", status: 409, id: mine.id };
-        const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, device, status: "waiting", set: openSet(d), pos: Date.now(), at: new Date().toISOString() };
+        const e = { id: crypto.randomUUID().slice(0, 12), name, song, artist, device, status: "waiting", set: d.currentSet || 1, pos: Date.now(), at: new Date().toISOString() };
         d.entries.push(e);
         return { ok: true, id: e.id };
       });
@@ -191,6 +191,10 @@ export default async (req) => {
           const n = Math.max(cur, Math.round(Number(body.set)) || cur);
           const k = body.where === "top" ? 0 : body.where === "end" || body.where == null ? Infinity : waitingIn(d, n).findIndex((x) => x.id === body.where) + 1;
           d.entries.push({ id: crypto.randomUUID().slice(0, 12), name, song, artist, vip: true, status: "waiting", set: n, pos: posAt(d, n, k), at, by: me.name });
+          return { ok: true };
+        }
+        if (body.action === "pause" || body.action === "resume") {
+          d.paused = body.action === "pause"; d.pausedBy = me.name; d.pausedAt = at;
           return { ok: true };
         }
         if (body.action === "endset") {
