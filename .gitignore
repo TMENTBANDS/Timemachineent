@@ -2,3 +2,4 @@ node_modules/
 .netlify/
 .DS_Store
 public/signup.html
+public/corporate.html

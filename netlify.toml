@@ -10,3 +10,8 @@
   for = "/signup"
   [headers.values]
     Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/corporate"
+  [headers.values]
+    Cache-Control = "no-cache"

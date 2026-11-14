@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0c0907">
+<meta name="robots" content="noindex">
+<title>Corporate Live Band Karaoke Sign-Up</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700;800&display=swap">
+<style>
+/* Matches timemachineent.com: stage-dark ground, warm gradient accent, Anton display + Barlow body */
+:root{--bg:#0c0907;--panel:#1b1410;--line:#3a2a1f;--fg:#fbf3ea;--muted:#c9b8a4;--gold:#ffcf40;--orange:#ff8a1f;--ink:#1a0d05;--ok:#7bd88f;--warn:#ff7a59;
+  --warm:linear-gradient(90deg,#d9541e,#ff8a1f,#ffcf40);--display:Anton,Impact,"Arial Narrow",sans-serif;--body:Barlow,system-ui,-apple-system,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:radial-gradient(900px 420px at 50% -8%,rgba(255,138,31,.16),transparent 60%),var(--bg);color:var(--fg);font-family:var(--body);font-size:17px;line-height:1.4;min-height:100vh;
+  padding:max(18px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.wrap{max-width:580px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2{font-family:var(--display);font-weight:400;text-transform:uppercase;margin:0;line-height:.98;letter-spacing:.01em;text-wrap:balance}
+h1{font-size:clamp(2.4rem,11vw,3.6rem)}
+h1 span,.grad{background:var(--warm);-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:1.9rem}
+h3{margin:0;font-size:1.05rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+p{margin:0}
+.muted{color:var(--muted)}
+.eyebrow{font-weight:800;font-size:.78rem;letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+.btn{border:0;border-radius:999px;padding:14px 22px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;font-size:.95rem;background:var(--warm);color:var(--ink)}
+a.btn{display:block;text-decoration:none}
+.btn.ghost{background:transparent;color:var(--fg);border:2px solid var(--line)}
+.btn.small{padding:8px 14px;font-size:.78rem;letter-spacing:.08em}
+.btn:disabled{opacity:.45;cursor:default}
+.linkbtn{background:none;border:0;color:var(--muted);text-decoration:underline;padding:6px 0;font-size:.95rem}
+.mark{display:flex;gap:6px}
+.mark svg{width:28px;height:23px}
+.venues{display:grid;gap:12px}
+.venue{display:flex;justify-content:space-between;align-items:center;gap:12px;text-align:left;width:100%;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px}
+.venue strong{font-family:var(--display);font-weight:400;text-transform:uppercase;font-size:1.6rem;display:block;letter-spacing:.02em}
+.venue span{color:var(--muted);font-size:.95rem}
+.venue .go{font-size:1.6rem;color:var(--orange)}
+.status{border-radius:14px;padding:14px;border:1px solid var(--line);background:var(--panel);display:flex;flex-direction:column;gap:10px}
+.status.bad{border-color:var(--warn)}
+.status.ok{border-color:var(--ok)}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:.85rem;color:var(--muted);font-weight:600}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.search{position:sticky;top:0;z-index:5;background:var(--bg);padding:8px 0;display:flex;flex-direction:column;gap:10px}
+.search input{width:100%;padding:14px 16px;border-radius:14px;border:1px solid var(--line);background:var(--panel);font-size:1.05rem}
+.seg{display:flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.seg button{background:none;border:0;padding:8px 16px;font-size:.85rem;font-weight:700;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--warm);color:var(--ink)}
+.count{font-size:.9rem;color:var(--muted)}
+.list{list-style:none;margin:0;padding:0}
+.list li button{width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);padding:12px 2px;display:flex;flex-direction:column;gap:1px}
+.list li button:hover .t{color:var(--gold)}
+.list li button.taken{cursor:default;opacity:.5}
+.list li button.taken:hover .t{color:inherit}
+.list li button.again .t{color:var(--muted)}
+.tag.pay{background:var(--gold)}
+.list .tag{display:inline-block;white-space:nowrap;margin-top:3px}
+.t{font-weight:700;font-size:1.05rem}
+.a{color:var(--muted);font-size:.92rem}
+.letter{font-family:var(--display);font-size:1.3rem;color:var(--orange);padding:16px 2px 4px;border-bottom:1px solid var(--line)}
+.sheet{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.sheet form{background:var(--panel);border-top:3px solid var(--orange);border-radius:22px 22px 0 0;width:100%;max-width:580px;display:flex;flex-direction:column;gap:14px;
+  padding:22px max(18px,env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left))}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:.9rem;color:var(--muted);font-weight:600}
+.field input,.field select{padding:14px;border-radius:14px;border:1px solid var(--line);background:var(--bg);font-size:1.05rem;width:100%}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .btn{flex:1 1 140px}
+.ticket{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:24px;display:flex;flex-direction:column;gap:10px;text-align:center}
+.ticket .num{font-family:var(--display);font-size:clamp(3.2rem,16vw,5rem);line-height:1;font-variant-numeric:tabular-nums}
+.ticket .song{font-weight:800;font-size:1.2rem}
+.tip{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--orange);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:6px}
+.tip b{font-size:1.25rem}
+.tip .linkbtn{align-self:flex-start;padding:2px 0}
+.q{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.q li{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px;display:grid;grid-template-columns:2.4rem 1fr;gap:3px 10px}
+.q li.now{border-color:var(--orange);box-shadow:0 0 0 1px var(--orange) inset}
+.q .pos{font-family:var(--display);font-size:1.6rem;color:var(--orange);grid-row:span 2;font-variant-numeric:tabular-nums}
+.q .who{font-weight:800;min-width:0;overflow-wrap:anywhere}
+.q .what{color:var(--muted);font-size:.95rem;min-width:0;overflow-wrap:anywhere}
+.q .acts{grid-column:2;display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.q.done li{opacity:.65}
+details.past{border-top:1px solid var(--line);padding-top:12px}
+details.past summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px}
+details.past summary::-webkit-details-marker{display:none}
+details.past summary::before{content:"▸";color:var(--orange);font-size:1.1rem;transition:transform .15s}
+details.past[open] summary::before{transform:rotate(90deg)}
+details.past summary h3{display:inline}
+details.past[open] summary{margin-bottom:10px}
+.tag{font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);background:var(--gold);border-radius:6px;padding:2px 6px;font-weight:800;margin-left:6px;vertical-align:2px}
+.tag.deck{background:var(--muted)}.tag.skip{background:var(--warn)}.tag.done{background:var(--ok)}
+.empty{border:1px dashed var(--line);border-radius:16px;padding:22px;text-align:center;color:var(--muted)}
+.note{font-size:.9rem;color:var(--muted);border-left:3px solid var(--orange);padding:6px 10px}
+.foot{display:flex;justify-content:center;gap:18px;padding-top:10px;flex-wrap:wrap}
+.toggle{display:flex;justify-content:space-between;align-items:center;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.spin{display:inline-block;width:18px;height:18px;border:3px solid var(--line);border-top-color:var(--orange);border-radius:50%;animation:sp 0.8s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.unpaid{display:inline-block;background:var(--warn);color:#1a0505;font-weight:900;letter-spacing:.08em;border-radius:6px;padding:2px 8px;margin-right:4px}
+.tag.unpaidtag{background:var(--warn);color:#1a0505}
+.tag.vip{background:#ff2e88;color:#fff}.tag.moved{background:#23d5f5}
+.q li.vip{border-color:#ff2e88}.q li.vip .pos{color:#ff2e88;font-size:1.1rem}
+.offer{border:2px solid var(--orange);border-radius:18px;padding:18px;background:var(--panel);display:flex;flex-direction:column;gap:12px}
+.pastset{font-weight:800;font-size:.85rem;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin:6px 0 2px}
+/* bottom sheets never run off the top of the screen; they scroll inside when a phone keyboard is open */
+.sheet form{max-height:calc(100% - 12px);max-height:calc(100dvh - 12px);overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}}
+.qrcard{background:#fff;color:#111;border-radius:22px;padding:26px 22px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;border:5px solid var(--orange)}
+.qrtop{font-size:.8rem;letter-spacing:.16em;text-transform:uppercase;font-weight:800;color:#a34a00}
+.qrname{font-family:var(--display);text-transform:uppercase;font-size:2rem;line-height:1;text-wrap:balance}
+.qrbox{width:min(280px,72vw);aspect-ratio:1}
+.qrbox svg{width:100%;height:100%;display:block}
+.qrcta{font-weight:800;font-size:1.1rem}
+.qrcode{font-size:1rem;color:#333}.qrcode b{letter-spacing:.15em}
+.sethead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+.tag.extra{background:#23d5f5}
+@media print{body{background:#fff;padding:0}.noprint{display:none!important}.qrcard{border-color:#000}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="muted"><span class="spin"></span> Loading…</p></div>
+<script src="/qrcode.js"></script>
+<script>
+const SONGS = __SONGS__;
+const API = "/api/corp/", LBK = "/api/lbk/";
+
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const store = {get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}, set(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const norm = s => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9 ]/g,"");
+const LIB = SONGS.map(([a,t],i)=>({i,a,t,k:norm(t+" "+a),ks:norm(t).replace(/^the /,""),ka:norm(a).replace(/^the /,"")}));
+const fmtTime = iso => iso ? new Date(iso).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}) : "";
+const fmtDate = d => d ? new Date(d+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"}) : "";
+const today = () => new Intl.DateTimeFormat("en-CA",{timeZone:"America/Chicago"}).format(new Date());
+const codeOf = c => String(c||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,8);
+const eventLink = c => location.origin + "/corporate?e=" + c;
+let device = store.get("lbk-device"); if(!device){device=(crypto.randomUUID?crypto.randomUUID():String(Math.random()).slice(2)+Date.now());store.set("lbk-device",device)}
+
+async function api(path, opts={}, base=API){
+  const o = {method:opts.body?"POST":"GET", headers:{"content-type":"application/json"}};
+  if(opts.body) o.body = JSON.stringify(opts.body);
+  if(S.token) o.headers["x-host-token"] = S.token;
+  let r; try{ r = await fetch(base+path, o) }catch(e){ throw {error:"No connection. Check your signal and try again."} }
+  const j = await r.json().catch(()=>({error:"Something went wrong. Try again."}));
+  if(!r.ok) throw {...j, status:r.status};
+  return j;
+}
+
+const S = {view:"start", code:null, line:null, q:"", by:"song", err:"",
+  token:store.get("lbk-host")?.token||null, me:store.get("lbk-host")?.host||null,
+  hostCode:store.get("lbkc-hostevent"), events:null, editing:null, qrFor:null, qrBack:"events"};
+const mineKey = c => "lbkc-mine-"+c;
+const mine = () => S.code ? store.get(mineKey(S.code)) : null;
+let pollTimer=null;
+function poll(ms){ clearInterval(pollTimer); if(ms) pollTimer=setInterval(refresh, ms) }
+async function refresh(){
+  const code = S.view==="host" ? S.hostCode : S.code;
+  if(!code || !["ticket","songs","host"].includes(S.view)) return;
+  try{ S.line = await api("line?code="+code); S.stale=false }catch(e){ S.stale=true }
+  if(S.view==="ticket"||S.view==="host") render(true);
+}
+const views = {};
+function go(v){ S.view=v; render(); }
+function render(keepScroll){
+  const y=window.scrollY, active=document.activeElement&&document.activeElement.id;
+  if(keepScroll && document.querySelector(".sheet")) return; // don't wipe an open form
+  $("#app").innerHTML = views[S.view].html(); views[S.view].bind && views[S.view].bind();
+  if(keepScroll){ window.scrollTo(0,y); if(active&&$("#"+active)) $("#"+active).focus(); }
+}
+const brand = `<div class="mark" aria-hidden="true">
+ <svg viewBox="0 0 34 28"><path d="M17 2 3 14l14 12zM31 2 17 14l14 12z" fill="#ff2e88"/></svg>
+ <svg viewBox="0 0 34 28"><path d="M9 2l18 12L9 26z" fill="#ff8a1f"/></svg>
+ <svg viewBox="0 0 34 28"><path d="M3 2l14 12L3 26zM17 2l14 12-14 12z" fill="#23d5f5"/></svg></div>`;
+const eventName = () => S.line ? S.line.event.name : "Your event";
+const hostFoot = () => `<div class="foot"><button class="linkbtn" id="hostlink">Host login</button></div>`;
+const bindHostFoot = () => { const h=$("#hostlink"); if(h) h.onclick=()=>{ if(S.token) openHostEvents(); else go("pin") } };
+
+// ---------------- guests ----------------
+views.start = {
+  html(){
+    return `${brand}<span class="eyebrow">Time Machine Live Band Karaoke</span>
+    ${S.err?`<p class="status bad">${esc(S.err)}</p>`:""}
+    <h1>Sing with <span>the band</span></h1>
+    <p class="muted">Scan the QR code at your event, or type the event code the host gave you.</p>
+    <form id="cf" style="display:flex;flex-direction:column;gap:12px">
+      <div class="field"><label for="cd">Event code</label><input id="cd" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="e.g. K7RQ2" style="text-transform:uppercase;letter-spacing:.15em;font-weight:700"></div>
+      <button class="btn" id="cgo">Find my event</button><p class="muted" id="cerr" role="alert"></p></form>
+    ${hostFoot()}`;
+  },
+  bind(){
+    bindHostFoot();
+    $("#cf").onsubmit=e=>{ e.preventDefault(); const c=codeOf($("#cd").value); if(c) enterEvent(c,$("#cerr"),$("#cgo")) };
+  }
+};
+async function enterEvent(code, errEl, btn){
+  if(btn) btn.disabled=true;
+  try{
+    const line = await api("line?code="+code);
+    S.code=code; S.line=line; S.err="";
+    try{ history.replaceState(null,"","/corporate?e="+code) }catch(e){}
+    const m=mine(), me=m&&line.entries.find(x=>x.id===m.id);
+    if(line.event.status==="closed" && !me){ S.err="Sign-ups for "+line.event.name+" are closed. Thanks for singing with us!"; S.code=null; go("start"); return }
+    go(me ? "ticket" : "songs"); poll(5000);
+  }catch(e){
+    if(errEl){ errEl.textContent=e.error||"Couldn't find that event."; if(btn) btn.disabled=false }
+    else { S.err=e.error||"Couldn't find that event."; go("start") }
+  }
+}
+
+views.songs = {
+  html(){
+    const m=mine();
+    return `<div class="topbar"><span class="pill">${esc(eventName())}</span>${m?`<button class="linkbtn" id="myspot">My spot</button>`:""}</div>
+    <h2>Find your <span class="grad">song</span></h2>
+    <div class="search"><input id="q" type="search" placeholder="Search songs or artists" autocomplete="off" value="${esc(S.q)}" aria-label="Search songs or artists">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <div class="seg" role="group" aria-label="Sort"><button data-by="song" aria-pressed="${S.by==="song"}">By song</button><button data-by="artist" aria-pressed="${S.by==="artist"}">By artist</button></div>
+    <span class="count" id="count"></span></div></div>
+    <ul class="list" id="list"></ul>`;
+  },
+  bind(){
+    const ms=$("#myspot"); if(ms) ms.onclick=()=>go("ticket");
+    const inp=$("#q"); inp.oninput=()=>{S.q=inp.value;drawList()};
+    $$(".seg button").forEach(b=>b.onclick=()=>{S.by=b.dataset.by;render()});
+    drawList();
+  }
+};
+function drawList(){
+  const terms=norm(S.q).split(/\s+/).filter(Boolean);
+  const rows=LIB.filter(r=>terms.every(t=>r.k.includes(t)));
+  const k=S.by==="song"?"ks":"ka", k2=S.by==="song"?"ka":"ks";
+  rows.sort((a,b)=>a[k].localeCompare(b[k])||a[k2].localeCompare(b[k2]));
+  $("#count").textContent=rows.length+" songs";
+  let html="",last="";
+  rows.slice(0,400).forEach(r=>{
+    const L=/[a-z]/.test(r[k][0]||"")?r[k][0].toUpperCase():"#";
+    if(!S.q && L!==last){html+=`<li class="letter" aria-hidden="true">${L}</li>`;last=L}
+    const main=S.by==="song"?r.t:r.a, sub=S.by==="song"?r.a:r.t;
+    html+=`<li><button data-i="${r.i}"><span class="t">${esc(main)}</span><span class="a">${esc(sub)}</span></button></li>`;
+  });
+  if(rows.length>400) html+=`<li class="muted" style="padding:14px 2px">Showing 400 of ${rows.length}. Search to narrow it down.</li>`;
+  if(!rows.length) html=`<li class="empty">No match for “${esc(S.q)}”. Try just the artist or one word from the title.</li>`;
+  $("#list").innerHTML=html;
+  $("#list").querySelectorAll("button[data-i]").forEach(b=>b.onclick=()=>openSignup(LIB[+b.dataset.i]));
+}
+function myEntry(){ const m=mine(); return m&&S.line ? S.line.entries.find(x=>x.id===m.id) : null }
+function openSignup(r){
+  const me=myEntry(), busy=me&&(me.status==="waiting"||me.status==="offered");
+  const el=document.createElement("div"); el.className="sheet";
+  el.innerHTML=`<form id="f"><span class="eyebrow">Sign up to sing</span>
+    <div><div class="t" style="font-size:1.25rem">${esc(r.t)}</div><div class="a">${esc(r.a)}</div></div>
+    ${busy?`<p class="status bad">You're already in line with ${esc(me.song)}. Once you've sung, you can sign up again.</p>`:""}
+    <div class="field"><label for="nm">Your name (the host will call it out)</label><input id="nm" maxlength="30" required value="${esc(store.get("lbk-name")||"")}" autocomplete="given-name"></div>
+    <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go" ${busy?"disabled":""}>Get in line</button></div>
+    <p class="muted" id="err" role="alert" style="font-size:.95rem"></p></form>`;
+  document.body.appendChild(el);
+  const close=()=>el.remove();
+  el.onclick=e=>{if(e.target===el)close()}; $("#cx").onclick=close;
+  $("#f").onsubmit=async e=>{
+    e.preventDefault(); const name=$("#nm").value.trim(); if(!name) return;
+    $("#go").disabled=true; $("#go").textContent="Adding you…";
+    try{
+      const res=await api("signup",{body:{code:S.code,name,song:r.t,artist:r.a,device}});
+      store.set("lbk-name",name); store.set(mineKey(S.code),{id:res.id}); S.line=res;
+      close(); go("ticket"); window.scrollTo(0,0);
+    }catch(err){
+      if(err.id) store.set(mineKey(S.code),{id:err.id});
+      $("#err").textContent=err.error||"That didn't go through. Tap Get in line again."; $("#go").disabled=false; $("#go").textContent="Get in line";
+    }
+  };
+}
+
+views.ticket = {
+  html(){
+    const me=myEntry(), L=S.line, nm=esc(eventName());
+    if(me && me.status==="offered"){
+      try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}
+      const n=Math.max(me.offeredFor||me.set+1,L.currentSet);
+      return `${brand}<div class="offer"><span class="eyebrow">${nm}</span>
+        <h2>Set ${me.set} wrapped before your turn</h2>
+        <p>Want to move <b>${esc(me.song)}</b> to <b>Set ${n}</b>? You'll go into the first 5 singers of that set.</p>
+        <div class="row"><button class="btn ghost" id="no">No thanks</button><button class="btn" id="yes">Yes, move me</button></div>
+        <p class="muted" id="oerr" role="alert"></p></div>`;
+    }
+    const act=L?L.entries.filter(x=>x.status==="waiting"):[], ix=me?act.findIndex(x=>x.id===me.id):-1;
+    let big,line;
+    if(!L){big="…";line="Loading your spot"}
+    else if(!me){big="…";line="We couldn't find your spot. Pick a song to sign up."}
+    else if(me.status==="done"){big="★";line="You crushed it! Pick another song any time."}
+    else if(me.status==="declined"){big="–";line="No problem. Pick another song any time."}
+    else if(me.status==="left"){big="–";line="You took yourself off the list. Pick another song any time."}
+    else if(me.status==="skipped"){big="–";line="The host skipped your turn. Come see us at the stage."}
+    else if(ix===0){big="NOW";line="You're up! Head to the stage."}
+    else if(ix===1){big="#2";line="You're on deck. Get close to the stage."}
+    else {big="#"+(ix+1);line=`${ix} singers ahead of you`}
+    const waiting=me&&me.status==="waiting";
+    const extra=waiting&&!me.vip&&!me.rolled&&me.spot>L.setReg;
+    return `${brand}<div class="ticket"><span class="eyebrow">${nm}</span>
+      <div class="num grad">${big}</div><p>${line}</p>
+      ${me?`<p class="song">${esc(me.song)}</p><p class="a">${esc(me.artist)} · for ${esc(me.name)}</p>`:""}
+      ${waiting?`<p class="a">Set ${me.set}${me.set>L.currentSet?" (coming up)":""}${me.vip?"":` · spot ${me.spot} of ${L.setCap}`}</p>`:""}
+      ${extra?`<p class="note" style="text-align:left">You're one of this set's 3 extra spots. If the set ends before your turn, this page will ask if you want to move to the next set.</p>`:""}</div>
+      ${S.stale?`<p class="note">Can't reach the list right now. Your spot is saved; this page will catch up.</p>`:`<p class="muted" style="text-align:center">This page updates on its own. Keep it open.</p>`}
+      ${waiting?`<button class="btn ghost" id="more">Browse the songbook</button>`:L&&L.event.status!=="closed"?`<button class="btn" id="more">Sign up for another song</button>`:""}
+      ${waiting?`<div class="foot"><button class="linkbtn" id="leave">I'm leaving: take me off the list</button></div>`:""}`;
+  },
+  bind(){
+    const mo=$("#more"); if(mo) mo.onclick=()=>go("songs");
+    const me=myEntry(), y=$("#yes"), n=$("#no");
+    const answer=async yes=>{ y.disabled=n.disabled=true; try{ S.line=await api("moveup",{body:{code:S.code,id:me.id,device,yes}}); render() }catch(e){ $("#oerr").textContent=e.error||"That didn't go through. Tap again."; y.disabled=n.disabled=false } };
+    if(y){ y.onclick=()=>answer(true); n.onclick=()=>answer(false) }
+    const lv=$("#leave"); if(lv) lv.onclick=async()=>{ lv.disabled=true; try{ S.line=await api("leave",{body:{code:S.code,id:me.id,device}}); render() }catch(e){ lv.disabled=false } };
+  }
+};
+
+// ---------------- hosts ----------------
+views.pin = {
+  html(){
+    const hs=S.hosts;
+    if(!hs) return `${brand}<h2>Host login</h2><p class="muted"><span class="spin"></span> Loading hosts…</p>`;
+    const last=store.get("lbk-lasthost");
+    return `${brand}<span class="eyebrow">Corporate events</span><h2>Host login</h2><p class="muted">Same name and PIN as the Wednesday sign-up.</p>
+    <form id="pf" style="display:flex;flex-direction:column;gap:14px">
+      <div class="field"><label for="who">Your name</label><select id="who" required><option value="">Choose your name</option>${hs.map(h=>`<option value="${esc(h.id)}" ${last===h.id?"selected":""}>${esc(h.name)}</option>`).join("")}</select></div>
+      <div class="field"><label for="pin">Your PIN</label><input id="pin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" required></div>
+      <div class="row"><button type="button" class="btn ghost" id="cx">Back</button><button class="btn" id="go">Log in</button></div>
+      <p class="muted" id="perr" role="alert"></p></form>`;
+  },
+  bind(){
+    if(!S.hosts){ api("hosts",{},LBK).then(r=>{S.hosts=r.hosts;if(S.view==="pin")render()}).catch(e=>{S.hosts=[];if(S.view==="pin")render()}); return }
+    $("#cx").onclick=()=>go(S.code?"songs":"start");
+    $("#pf").onsubmit=async e=>{
+      e.preventDefault(); $("#go").disabled=true;
+      try{ const s=await api("login",{body:{hostId:$("#who").value,pin:$("#pin").value.trim()}},LBK);
+        S.token=s.token; S.me=s.host; store.set("lbk-host",s); store.set("lbk-lasthost",s.host.id); openHostEvents();
+      }catch(err){ $("#perr").textContent=err.error||"That didn't work. Try again."; $("#pin").value=""; $("#go").disabled=false }
+    };
+  }
+};
+function needLogin(e){ if(e&&e.status===401){ S.token=null; S.me=null; store.set("lbk-host",null); poll(0); go("pin"); return true } return false }
+async function openHostEvents(){
+  poll(0); S.hostCode=null; store.set("lbkc-hostevent",null); go("events");
+  try{ const r=await api("events"); S.events=r.events; if(S.view==="events") render() }catch(e){ if(!needLogin(e)){ S.events=[]; S.err=e.error; render() } }
+}
+function logout(){ S.token=null; S.me=null; store.set("lbk-host",null); store.set("lbkc-hostevent",null); poll(0); go("start") }
+
+views.events = {
+  html(){
+    const td=today(), ev=S.events, admin=S.me&&S.me.admin;
+    const card=e=>`<button class="venue" data-ev="${e.id}"><div><strong>${esc(e.name)}</strong><span>${fmtDate(e.date)}${e.date===td?' <span class="tag">Today</span>':""}${e.venue?` · ${esc(e.venue)}`:""}<br>Code ${e.id}</span></div><span class="go" aria-hidden="true">→</span></button>`;
+    return `<div class="topbar"><span class="eyebrow">Signed in as ${esc(S.me.name)}</span><button class="linkbtn" id="out">Log out</button></div>
+    <h1>Which event are <span>you hosting?</span></h1>
+    ${!ev?`<p class="muted"><span class="spin"></span> Loading events…</p>`:ev.length?`<div class="venues">${ev.map(card).join("")}</div>`:`<div class="empty">No open events yet.${admin?" Set one up below.":" Ask Shonna to set up the event."}</div>`}
+    ${admin?`<div class="row"><button class="btn${ev&&ev.length?" ghost":""}" id="newev">+ New event</button><button class="btn ghost" id="manage">Manage events</button></div>`:""}`;
+  },
+  bind(){
+    $("#out").onclick=logout;
+    const nv=$("#newev"); if(nv) nv.onclick=()=>openManage("new");
+    const mg=$("#manage"); if(mg) mg.onclick=()=>openManage(null);
+    $$("[data-ev]").forEach(b=>b.onclick=()=>openHost(b.dataset.ev));
+  }
+};
+async function openManage(editing){
+  S.editing=editing; S.allEvents=null; go("manage");
+  try{ const r=await api("events?all=1"); S.allEvents=r.events; if(S.view==="manage") render() }catch(e){ needLogin(e) }
+}
+views.manage = {
+  html(){
+    const all=S.allEvents, td=today(), ed=S.editing&&S.editing!=="new"&&all?all.find(e=>e.id===S.editing):null;
+    const form = S.editing ? `<form id="sf" class="ticket" style="text-align:left;gap:12px">
+      <h2 style="font-size:1.4rem">${ed?"Edit event":"New event"}</h2>
+      <div class="field"><label for="sn">Event name (guests see this)</label><input id="sn" maxlength="60" required placeholder="e.g. Acme Corp Holiday Party" value="${esc(ed?ed.name:"")}"></div>
+      <div class="field"><label for="sd">Date</label><input id="sd" type="date" required value="${esc(ed?ed.date:td)}"></div>
+      <div class="field"><label for="sv">Venue (optional)</label><input id="sv" maxlength="120" placeholder="Venue name and address" value="${esc(ed?ed.venue:"")}"></div>
+      <div class="row"><button type="button" class="btn ghost" id="scx">Cancel</button><button class="btn" id="sgo">${ed?"Save":"Create event"}</button></div>
+      <p class="muted" id="serr" role="alert"></p></form>` : `<button class="btn" id="newev">+ New event</button>`;
+    const row=e=>`<li style="grid-template-columns:1fr"><span class="who">${esc(e.name)}${e.status==="closed"?'<span class="tag skip">Closed</span>':e.date===td?'<span class="tag">Today</span>':""}</span>
+      <span class="what">${fmtDate(e.date)}${e.venue?` · ${esc(e.venue)}`:""} · Code <b>${e.id}</b></span>
+      <div class="acts" style="grid-column:1"><button class="btn small" data-qr="${e.id}">QR code</button>
+      <button class="btn small ghost" data-edit="${e.id}">Edit</button>
+      <button class="btn small ghost" data-toggle="${e.id}" data-to="${e.status==="closed"?"reopen":"close"}">${e.status==="closed"?"Reopen":"Close sign-ups"}</button></div></li>`;
+    const list=all?all.slice().sort((a,b)=>b.date.localeCompare(a.date)):null;
+    return `<div class="topbar"><span class="eyebrow">Manage events</span><button class="linkbtn" id="cx">Done</button></div>
+    <h2>Corporate <span class="grad">events</span></h2><p class="muted">Each event gets its own QR code and its own sign-up line, so you can run as many shows at once as you need.</p>
+    ${form}
+    ${!list?`<p class="muted"><span class="spin"></span> Loading…</p>`:list.length?`<ul class="q">${list.map(row).join("")}</ul>`:`<div class="empty">No events yet.</div>`}`;
+  },
+  bind(){
+    $("#cx").onclick=openHostEvents;
+    const nv=$("#newev"); if(nv) nv.onclick=()=>{S.editing="new";render();window.scrollTo(0,0)};
+    const cx=$("#scx"); if(cx) cx.onclick=()=>{S.editing=null;render()};
+    const f=$("#sf"); if(f) f.onsubmit=async e=>{
+      e.preventDefault(); $("#sgo").disabled=true;
+      const data={name:$("#sn").value.trim(),date:$("#sd").value,venue:$("#sv").value.trim()};
+      try{
+        const r=await api("events",{body:S.editing==="new"?{op:"add",...data}:{op:"edit",id:S.editing,...data}});
+        S.allEvents=r.events;
+        if(S.editing==="new"){ S.editing=null; S.qrFor=r.id; S.qrBack="manage"; go("qr") } else { S.editing=null; render() }
+      }catch(err){ if(!needLogin(err)){ $("#serr").textContent=err.error||"Couldn't save. Try again."; $("#sgo").disabled=false } }
+    };
+    $$("[data-qr]").forEach(b=>b.onclick=()=>{S.qrFor=b.dataset.qr;S.qrBack="manage";go("qr")});
+    $$("[data-edit]").forEach(b=>b.onclick=()=>{S.editing=b.dataset.edit;render();window.scrollTo(0,0)});
+    $$("[data-toggle]").forEach(b=>b.onclick=async()=>{ b.disabled=true;
+      try{ const r=await api("events",{body:{op:b.dataset.to,id:b.dataset.toggle}}); S.allEvents=r.events; render() }catch(e){ if(!needLogin(e)) b.disabled=false } });
+  }
+};
+
+views.qr = {
+  html(){
+    const ev=(S.allEvents||[]).concat(S.events||[]).find(e=>e.id===S.qrFor)||(S.line&&S.line.event.id===S.qrFor?S.line.event:null);
+    if(!ev) return `<p class="muted">Loading…</p>`;
+    let svg; try{ const q=qrcode(0,"M"); q.addData(eventLink(ev.id)); q.make(); svg=q.createSvgTag({cellSize:4,margin:2,scalable:true}) }catch(e){ svg=`<p style="padding:20px">The QR code couldn't load. Use the event code below.</p>` }
+    return `<div class="topbar noprint"><span class="eyebrow">QR code</span><button class="linkbtn" id="cx">Back</button></div>
+    <div class="qrcard">
+      <div class="qrtop">Time Machine Live Band Karaoke</div>
+      <div class="qrname">${esc(ev.name)}</div>
+      <div class="qrbox" role="img" aria-label="QR code for ${esc(ev.name)}">${svg}</div>
+      <div class="qrcta">Scan to pick a song &amp; sign up to sing</div>
+      <div class="qrcode">Or go to <b style="letter-spacing:0">timemachineent.com/corporate</b><br>Event code: <b>${ev.id}</b></div>
+    </div>
+    <p class="muted noprint" style="text-align:center;font-size:.95rem">Print this page, or screenshot the card for table tents and screens.</p>
+    <div class="row noprint"><button class="btn" id="print">Print</button><button class="btn ghost" id="copy">Copy sign-up link</button></div>
+    <p class="muted noprint" style="font-size:.85rem;overflow-wrap:anywhere;text-align:center">${esc(eventLink(ev.id))}</p>
+    <p class="muted noprint" id="cmsg" role="status" style="text-align:center"></p>`;
+  },
+  bind(){
+    $("#cx").onclick=()=>{ if(S.qrBack==="host"){ go("host"); poll(4000) } else go("manage") };
+    const p=$("#print"); if(p) p.onclick=()=>window.print();
+    const c=$("#copy"); if(c) c.onclick=async()=>{ try{ await navigator.clipboard.writeText(eventLink(S.qrFor)); $("#cmsg").textContent="Link copied." }catch(e){ $("#cmsg").textContent="Couldn't copy. Press and hold the link above to copy it." } };
+  }
+};
+
+async function openHost(code){
+  S.hostCode=code; store.set("lbkc-hostevent",code); S.line=null; S.actionErr=""; go("host");
+  try{ S.line=await api("line?code="+code); render() }catch(e){ S.actionErr=e.error; render() }
+  poll(4000);
+}
+views.host = {
+  html(){
+    const L=S.line&&S.line.event.id===S.hostCode?S.line:null;
+    if(!L) return `<div class="topbar"><span class="eyebrow">${esc(S.me.name)}</span><button class="linkbtn" id="switch">Switch event</button></div><p class="muted">${S.actionErr?esc(S.actionErr):'<span class="spin"></span> Loading the list…'}</p>`;
+    const ev=L.event, all=L.entries, cur=L.currentSet, act=all.filter(r=>r.status==="waiting");
+    const offered=all.filter(r=>r.status==="offered");
+    const past=all.filter(r=>["done","skipped","declined","left"].includes(r.status)).sort((a,b)=>(b.doneAt||"").localeCompare(a.doneAt||""));
+    const sang=past.filter(r=>r.status==="done").length;
+    const sets=[...new Set(act.map(r=>r.set).concat([cur]))].sort((x,y)=>x-y);
+    let gi=0;
+    const item=(r,i,n)=>{const g=gi++;
+      return `<li class="${g===0?"now":""}${r.vip?" vip":""}"><span class="pos">${r.vip?"VIP":r.spot}</span>
+      <span class="who">${esc(r.name)}${g===0?'<span class="tag">Now</span>':g===1?'<span class="tag deck">On deck</span>':""}${r.vip?'<span class="tag vip">VIP</span>':r.rolled?'<span class="tag moved">Moved up</span>':r.spot>L.setReg?'<span class="tag extra">Extra</span>':""}</span>
+      <span class="what">${esc(r.song)}${r.artist?` · ${esc(r.artist)}`:""} <span class="a">· ${r.vip?`added by ${esc(r.by||"host")}`:`signed up ${fmtTime(r.at)}`}</span></span>
+      <div class="acts"><button class="btn small" data-a="done" data-id="${r.id}">Sang it</button>
+      <button class="btn small ghost" data-a="up" data-id="${r.id}" ${i===0?"disabled":""} aria-label="Move ${esc(r.name)} up">↑</button>
+      <button class="btn small ghost" data-a="down" data-id="${r.id}" ${i===n-1?"disabled":""} aria-label="Move ${esc(r.name)} down">↓</button>
+      <button class="btn small ghost" data-a="skip" data-id="${r.id}">Skip</button></div></li>`};
+    const setBlock=n=>{const rows=act.filter(r=>r.set===n), filled=all.filter(r=>r.set===n&&!r.vip&&r.status!=="declined"&&r.status!=="left").length, vips=rows.filter(r=>r.vip).length;
+      return `<div class="sethead"><h2>Set ${n}${n===cur?' <span class="grad">· now</span>':""}</h2><span class="muted" style="font-size:.9rem">${filled} of ${L.setCap} spots${vips?` + ${vips} VIP`:""}</span></div>
+      ${n===cur?`<div class="row" id="endbox"><button class="btn small" id="addvip">+ Add VIP</button><button class="btn small ghost" id="endset">End Set ${cur}</button></div>`:""}
+      ${rows.length?`<ol class="q">${rows.map((r,i)=>item(r,i,rows.length)).join("")}</ol>`:`<div class="empty">${n===cur?"No one left in line for this set.":"Empty."}</div>`}`};
+    const pastLabel=r=>r.status==="done"?"Sang":r.status==="declined"?"Passed":r.status==="left"?"Left":"Skipped";
+    return `<div class="topbar"><span class="eyebrow">${esc(S.me.name)} · hosting</span>
+      <span class="row" style="gap:14px"><button class="linkbtn" id="showqr">QR code</button><button class="linkbtn" id="switch">Switch event</button><button class="linkbtn" id="out">Log out</button></span></div>
+    <div style="display:flex;flex-direction:column;gap:6px"><h2>${esc(ev.name)}</h2>
+    <p class="muted">${fmtDate(ev.date)}${ev.venue?` · ${esc(ev.venue)}`:""} · Code ${ev.id}${ev.status==="closed"?' <span class="tag skip">Sign-ups closed</span>':""}</p>
+    <p class="muted" style="font-variant-numeric:tabular-nums">${all.length} sign-up${all.length===1?"":"s"} · ${act.length} in line · ${sang} sang</p></div>
+    <p class="note">Each set has ${L.setReg} spots plus 3 extras (13–15). VIPs are bonus spots. When you end a set, anyone who didn't get up is asked on their phone if they want to move to the next set's first 5.</p>
+    ${S.stale?`<p class="status bad">Can't reach the list right now. What you see may be out of date.</p>`:""}
+    ${S.actionErr?`<p class="status bad">${esc(S.actionErr)}</p>`:""}
+    ${offered.length?`<h3>Waiting on their answer</h3><ol class="q">${offered.map(r=>`<li><span class="pos">?</span><span class="who">${esc(r.name)}<span class="tag extra">From Set ${r.set}</span></span><span class="what">${esc(r.song)} · ${esc(r.artist)}</span><div class="acts"><button class="btn small" data-a="move" data-id="${r.id}">Move to next set</button><button class="btn small ghost" data-a="drop" data-id="${r.id}">Remove</button></div></li>`).join("")}</ol>`:""}
+    ${sets.map(setBlock).join("")}
+    ${past.length?`<details class="past"><summary><h3>Already up (${past.length})</h3></summary><ol class="q done">${past.map(r=>`<li><span class="pos">·</span><span class="who">${esc(r.name)}<span class="tag ${r.status==="done"?"done":"skip"}">${pastLabel(r)}</span></span><span class="what">${esc(r.song)}${r.artist?` · ${esc(r.artist)}`:""} <span class="a">· Set ${r.set}${r.vip?" · VIP":""}${r.by?` · ${esc(r.by)} ${fmtTime(r.doneAt)}`:""}</span></span><div class="acts"><button class="btn small ghost" data-a="back" data-id="${r.id}">Put back in line</button></div></li>`).join("")}</ol></details>`:""}`;
+  },
+  bind(){
+    $("#switch").onclick=openHostEvents;
+    const o=$("#out"); if(o) o.onclick=logout;
+    const q=$("#showqr"); if(q) q.onclick=()=>{ poll(0); S.qrFor=S.hostCode; S.qrBack="host"; go("qr") };
+    const send=async(body,btn)=>{ if(btn) btn.disabled=true;
+      try{ S.line=await api("host",{body:{code:S.hostCode,...body}}); S.actionErr="" }catch(e){ if(needLogin(e)) return; S.actionErr=e.error||"That didn't go through. Try again." } render(true) };
+    $$("[data-a]").forEach(b=>b.onclick=()=>send({action:b.dataset.a,id:b.dataset.id},b));
+    const av=$("#addvip"); if(av) av.onclick=()=>openVip(send);
+    const es=$("#endset"); if(es) es.onclick=()=>{
+      const L=S.line, cur=L.currentSet, inCur=L.entries.filter(r=>r.status==="waiting"&&r.set===cur), left=inCur.filter(r=>!r.vip).length, vips=inCur.length-left;
+      $("#endbox").innerHTML=`<span class="muted">End Set ${cur}?${left?` ${left} still in line will be asked to move to Set ${cur+1}.`:""}${vips?` ${vips} VIP${vips>1?"s":""} carry over to Set ${cur+1}.`:""}</span><button class="btn small" id="endyes">End set</button><button class="btn small ghost" id="endno">Cancel</button>`;
+      $("#endno").onclick=()=>render(true); $("#endyes").onclick=()=>send({action:"endset"},$("#endyes"));
+    };
+  }
+};
+function openVip(send){
+  const L=S.line, cur=L.currentSet, maxSet=Math.max(cur,...L.entries.filter(r=>r.status==="waiting").map(r=>r.set));
+  const setOpts=[]; for(let n=cur;n<=maxSet+1;n++) setOpts.push(n);
+  const el=document.createElement("div"); el.className="sheet";
+  el.innerHTML=`<form id="vf"><span class="eyebrow">Add a VIP</span>
+    <p class="muted" style="font-size:.95rem">Any name, any song. VIPs are bonus spots: they don't take anyone's spot and never get a phone prompt.</p>
+    <div class="field"><label for="vn">Name</label><input id="vn" maxlength="30" required autocomplete="off"></div>
+    <div class="field"><label for="vs">Song</label><input id="vs" maxlength="120" required autocomplete="off"></div>
+    <div class="field"><label for="va">Artist (optional)</label><input id="va" maxlength="120" autocomplete="off"></div>
+    <div class="row"><div class="field" style="flex:1 1 120px"><label for="vset">Set</label><select id="vset">${setOpts.map(n=>`<option value="${n}">Set ${n}${n===cur?" (now)":""}</option>`).join("")}</select></div>
+    <div class="field" style="flex:2 1 180px"><label for="vpos">Where in the set</label><select id="vpos"></select></div></div>
+    <div class="row"><button type="button" class="btn ghost" id="vcx">Cancel</button><button class="btn" id="vgo">Add VIP</button></div></form>`;
+  document.body.appendChild(el);
+  const close=()=>el.remove(); el.onclick=e=>{if(e.target===el)close()}; $("#vcx").onclick=close;
+  const fill=()=>{ const n=+$("#vset").value, act=S.line.entries.filter(r=>r.status==="waiting"&&r.set===n);
+    $("#vpos").innerHTML=`<option value="end">At the end</option><option value="top">At the top${n===cur&&act.length?" (up next)":""}</option>`+act.slice(0,-1).map(r=>`<option value="${esc(r.id)}">After ${esc(r.name)}</option>`).join("") };
+  $("#vset").onchange=fill; fill();
+  $("#vf").onsubmit=async e=>{ e.preventDefault(); const name=$("#vn").value.trim(), song=$("#vs").value.trim(); if(!name||!song) return;
+    const body={action:"vip",name,song,artist:$("#va").value.trim(),set:+$("#vset").value,where:$("#vpos").value}; close(); send(body) };
+}
+
+// ---------------- start ----------------
+(async()=>{
+  const e=codeOf(new URLSearchParams(location.search).get("e"));
+  if(e){ enterEvent(e); return }
+  if(S.token){
+    try{ const r=await api("me",{},LBK); S.me=r.host }catch(err){ S.token=null; S.me=null; store.set("lbk-host",null) }
+    if(S.token){ if(S.hostCode) openHost(S.hostCode); else openHostEvents(); return }
+  }
+  go("start");
+})();
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible") refresh() });
+</script>
+</body>
+</html>
