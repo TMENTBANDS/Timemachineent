@@ -383,9 +383,10 @@ views.manage = {
       <p class="muted" id="serr" role="alert"></p></form>` : `<button class="btn" id="newev">+ New event</button>`;
     const row=e=>`<li style="grid-template-columns:1fr"><span class="who">${esc(e.name)}${e.status==="closed"?'<span class="tag skip">Closed</span>':e.date===td?'<span class="tag">Today</span>':""}</span>
       <span class="what">${fmtDate(e.date)}${e.venue?` · ${esc(e.venue)}`:""} · Code <b>${e.id}</b></span>
-      <div class="acts" style="grid-column:1"><button class="btn small" data-qr="${e.id}">QR code</button>
+      <div class="acts" style="grid-column:1" id="eacts-${e.id}"><button class="btn small" data-qr="${e.id}">QR code</button>
       <button class="btn small ghost" data-edit="${e.id}">Edit</button>
-      <button class="btn small ghost" data-toggle="${e.id}" data-to="${e.status==="closed"?"reopen":"close"}">${e.status==="closed"?"Reopen":"Close sign-ups"}</button></div></li>`;
+      <button class="btn small ghost" data-toggle="${e.id}" data-to="${e.status==="closed"?"reopen":"close"}">${e.status==="closed"?"Reopen":"Close sign-ups"}</button>
+      <button class="btn small ghost" data-del="${e.id}">Delete</button></div></li>`;
     const list=all?all.slice().sort((a,b)=>b.date.localeCompare(a.date)):null;
     return `<div class="topbar"><span class="eyebrow">Manage events</span><button class="linkbtn" id="cx">Done</button></div>
     <h2>Corporate <span class="grad">events</span></h2><p class="muted">Each event gets its own QR code and its own sign-up line, so you can run as many shows at once as you need.</p>
@@ -409,6 +410,13 @@ views.manage = {
     $$("[data-edit]").forEach(b=>b.onclick=()=>{S.editing=b.dataset.edit;render();window.scrollTo(0,0)});
     $$("[data-toggle]").forEach(b=>b.onclick=async()=>{ b.disabled=true;
       try{ const r=await api("events",{body:{op:b.dataset.to,id:b.dataset.toggle}}); S.allEvents=r.events; render() }catch(e){ if(!needLogin(e)) b.disabled=false } });
+    $$("[data-del]").forEach(b=>b.onclick=()=>{
+      const id=b.dataset.del, ev=S.allEvents.find(x=>x.id===id), box=$("#eacts-"+id);
+      box.innerHTML=`<span class="muted">Delete ${esc(ev.name)} and its whole sign-up list? This can't be undone.</span><button class="btn small" id="dyes">Delete</button><button class="btn small ghost" id="dno">Keep</button>`;
+      $("#dno").onclick=()=>render();
+      $("#dyes").onclick=async()=>{ $("#dyes").disabled=true;
+        try{ const r=await api("events",{body:{op:"delete",id}}); S.allEvents=r.events; render() }catch(e){ if(!needLogin(e)) render() } };
+    });
   }
 };
 

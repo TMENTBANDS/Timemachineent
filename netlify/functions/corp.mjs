@@ -168,12 +168,14 @@ export default async (req) => {
         }
         const e = d.events.find((x) => x.id === codeOf(body.id));
         if (!e) return { __error: "That event isn't on the list.", status: 404 };
+        if (body.op === "delete") { d.events = d.events.filter((x) => x !== e); return { ok: true, deleted: e.id }; }
         if (body.op === "close") e.status = "closed";
         else if (body.op === "reopen") e.status = "open";
         else return { __error: "Unknown request.", status: 400 };
         return { ok: true };
       });
       if (out.__error) return fail(out.__error, out.status);
+      if (out.deleted) await store().delete(linePath(out.deleted));
       return json({ ok: true, id: made ? made.id : null, events: (await loadEvents()).map(eventView) });
     }
     // Run the line for one event.
