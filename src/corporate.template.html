@@ -434,13 +434,26 @@ views.qr = {
       <div class="qrcode">Or go to <b style="letter-spacing:0">timemachineent.com/corporate</b><br>Event code: <b>${ev.id}</b></div>
     </div>
     <p class="muted noprint" style="text-align:center;font-size:.95rem">Print this page, or screenshot the card for table tents and screens.</p>
-    <div class="row noprint"><button class="btn" id="print">Print</button><button class="btn ghost" id="copy">Copy sign-up link</button></div>
+    <div class="row noprint"><button class="btn" id="dl">Download QR code</button><button class="btn ghost" id="print">Print</button></div>
+    <div class="row noprint"><button class="btn ghost" id="copy">Copy sign-up link</button></div>
     <p class="muted noprint" style="font-size:.85rem;overflow-wrap:anywhere;text-align:center">${esc(eventLink(ev.id))}</p>
     <p class="muted noprint" id="cmsg" role="status" style="text-align:center"></p>`;
   },
   bind(){
     $("#cx").onclick=()=>{ if(S.qrBack==="host"){ go("host"); poll(4000) } else go("manage") };
     const p=$("#print"); if(p) p.onclick=()=>window.print();
+    // A big black-and-white PNG of just the QR code, to drop into the Canva table card.
+    const dl=$("#dl"); if(dl) dl.onclick=()=>{
+      try{
+        const q=qrcode(0,"M"); q.addData(eventLink(S.qrFor)); q.make();
+        const n=q.getModuleCount(), quiet=2, cell=Math.ceil(1200/(n+quiet*2)), size=cell*(n+quiet*2);
+        const c=document.createElement("canvas"); c.width=c.height=size; const g=c.getContext("2d");
+        g.fillStyle="#fff"; g.fillRect(0,0,size,size); g.fillStyle="#000";
+        for(let r=0;r<n;r++) for(let k=0;k<n;k++) if(q.isDark(r,k)) g.fillRect((k+quiet)*cell,(r+quiet)*cell,cell,cell);
+        const a=document.createElement("a"); a.download="QR "+S.qrFor+".png"; a.href=c.toDataURL("image/png"); document.body.appendChild(a); a.click(); a.remove();
+        $("#cmsg").textContent="QR code downloaded.";
+      }catch(e){ $("#cmsg").textContent="Couldn't make the download. Screenshot the card instead." }
+    };
     const c=$("#copy"); if(c) c.onclick=async()=>{ try{ await navigator.clipboard.writeText(eventLink(S.qrFor)); $("#cmsg").textContent="Link copied." }catch(e){ $("#cmsg").textContent="Couldn't copy. Press and hold the link above to copy it." } };
   }
 };
