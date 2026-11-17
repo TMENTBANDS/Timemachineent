@@ -30,18 +30,23 @@ const DEAL_FIELDS = [
 ];
 
 // ---------- Zoho helpers ----------
+const clean = (x = "") => x.trim().replace(/^"+|"+$/g, "").trim();
 let cachedToken = null, tokenExpires = 0;
 async function zohoToken() {
   if (cachedToken && Date.now() < tokenExpires) return cachedToken;
   const body = new URLSearchParams({
-    refresh_token: process.env.ZOHO_REFRESH_TOKEN,
-    client_id: process.env.ZOHO_CLIENT_ID,
-    client_secret: process.env.ZOHO_CLIENT_SECRET,
+    refresh_token: clean(process.env.ZOHO_REFRESH_TOKEN),
+    client_id: clean(process.env.ZOHO_CLIENT_ID),
+    client_secret: clean(process.env.ZOHO_CLIENT_SECRET),
     grant_type: "refresh_token",
   });
   const r = await fetch(`${ACCOUNTS}/oauth/v2/token`, { method: "POST", body });
   const j = await r.json();
-  if (!j.access_token) throw new Error("Zoho auth failed");
+  if (!j.access_token) {
+    const v = (k) => { const x = process.env[k] || ""; return `${k}: ${x.length} chars${/^\s|\s$|"/.test(x) ? " (has spaces or quotes!)" : ""}`; };
+    console.error("Zoho token refresh failed:", j.error || r.status, "|", ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_REFRESH_TOKEN"].map(v).join(", "), "| accounts:", ACCOUNTS);
+    throw new Error("Zoho auth failed");
+  }
   cachedToken = j.access_token;
   tokenExpires = Date.now() + (j.expires_in - 120) * 1000;
   return cachedToken;
