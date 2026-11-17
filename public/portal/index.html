@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Wedding Client Portal | Time Machine Entertainment</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0c0716;--bg-2:#160d27;--panel:#1d1233;--line:#34235a;--fg:#fff;--muted:#c5b8e6;--pink:#ff2e93;--orange:#ff8a1f;--yellow:#ffd23f;--cyan:#22e3ff;--violet:#8b5cff;
+--hot:linear-gradient(90deg,var(--pink),var(--orange) 55%,var(--yellow));--display:"Anton",Impact,"Arial Narrow Bold",sans-serif;--cond:"Barlow Condensed","Arial Narrow",sans-serif;--body:"Barlow",system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 var(--body);min-height:100vh}
+a{color:var(--cyan)}
+header{padding:22px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.brand{font-family:var(--display);letter-spacing:.04em;font-size:22px;text-decoration:none;color:var(--fg)}
+.brand span{background:var(--hot);-webkit-background-clip:text;background-clip:text;color:transparent}
+main{max-width:920px;margin:0 auto;padding:28px 20px 60px}
+h1{font-family:var(--display);font-weight:400;font-size:clamp(32px,6vw,52px);line-height:1.05;margin:0 0 6px;letter-spacing:.01em}
+h2{font-family:var(--cond);font-size:22px;text-transform:uppercase;letter-spacing:.08em;margin:0 0 14px;color:var(--yellow)}
+.sub{color:var(--muted);margin:0 0 26px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px 22px}
+.k{font-family:var(--cond);text-transform:uppercase;letter-spacing:.08em;font-size:13px;color:var(--muted)}
+.v{font-weight:600}
+.money{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+.money div{background:var(--bg-2);border-radius:10px;padding:14px;text-align:center}
+.money .n{font-family:var(--display);font-size:28px}
+.money .due .n{color:var(--yellow)}
+.btn{display:inline-block;border:0;border-radius:999px;padding:13px 26px;font:700 16px var(--cond);letter-spacing:.08em;text-transform:uppercase;cursor:pointer;text-decoration:none;color:#14081f;background:var(--hot)}
+.btn.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.btn:disabled{opacity:.6;cursor:wait}
+label{display:block;font-weight:600;margin:16px 0 6px}
+.hint{font-weight:400;color:var(--muted);font-size:14px}
+input,textarea,select{width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:10px;color:var(--fg);padding:12px;font:inherit}
+textarea{min-height:84px;resize:vertical}
+input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-color:transparent}
+.checks{display:flex;flex-wrap:wrap;gap:8px}
+.checks label{margin:0;font-weight:500;background:var(--bg-2);border:1px solid var(--line);border-radius:999px;padding:7px 14px;cursor:pointer;display:flex;gap:7px;align-items:center}
+.checks input{width:auto}
+.login{max-width:420px;margin:6vh auto 0}
+.err{color:#ff7aa8;min-height:1.5em;margin-top:10px}
+.ok{color:#7dffb0}
+.files a{display:flex;justify-content:space-between;padding:12px 14px;background:var(--bg-2);border-radius:10px;text-decoration:none;color:var(--fg);margin-bottom:8px}
+.pill{display:inline-block;font:700 12px var(--cond);letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:999px;background:var(--bg-2);border:1px solid var(--line);color:var(--muted)}
+.section-t{font-family:var(--cond);text-transform:uppercase;letter-spacing:.1em;color:var(--cyan);margin:26px 0 0;font-size:15px;border-top:1px solid var(--line);padding-top:18px}
+.hidden{display:none}
+.sticky{position:sticky;bottom:0;background:linear-gradient(transparent,var(--panel) 35%);padding-top:22px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.songbar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.chip{border:1px solid var(--line);background:var(--bg-2);color:var(--fg);border-radius:999px;padding:6px 13px;font:600 14px var(--cond);letter-spacing:.05em;text-transform:uppercase;cursor:pointer}
+.chip.on{background:var(--violet);border-color:var(--violet)}
+.songs{max-height:520px;overflow:auto;border:1px solid var(--line);border-radius:10px;margin-top:12px}
+.song{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line)}
+.song:last-child{border-bottom:0}
+.song .t{flex:1;min-width:0}
+.song .t b{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.song .t span{color:var(--muted);font-size:14px}
+.song .meta{color:var(--muted);font:600 12px var(--cond);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+.pick{border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:6px 10px;font:700 13px var(--cond);text-transform:uppercase;cursor:pointer;white-space:nowrap}
+.pick.must.on{background:#1f8f55;border-color:#1f8f55;color:#fff}
+.pick.dnp.on{background:#c2185b;border-color:#c2185b;color:#fff}
+.tally{display:flex;gap:14px;flex-wrap:wrap;font:700 15px var(--cond);text-transform:uppercase;letter-spacing:.06em}
+.tally .g{color:#7dffb0}.tally .r{color:#ff7aa8}
+@media(max-width:560px){.song{flex-wrap:wrap}.song .meta{display:none}}
+@media(max-width:560px){.money{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="https://timemachineent.com">TIME MACHINE <span>ENTERTAINMENT</span></a>
+  <button class="btn ghost hidden" id="logout" type="button">Log out</button>
+</header>
+
+<main>
+  <!-- LOGIN -->
+  <section id="loginView" class="login">
+    <h1>Wedding Portal</h1>
+    <p class="sub">Log in to see your contract, your balance, and your wedding worksheet.</p>
+    <form class="card" id="loginForm">
+      <label for="ln">Your last name</label>
+      <input id="ln" autocomplete="family-name" required>
+      <label for="pin">Portal PIN <span class="hint">(from your booking email)</span></label>
+      <input id="pin" inputmode="numeric" autocomplete="one-time-code" required>
+      <div style="margin-top:20px"><button class="btn" id="loginBtn">Open my portal</button></div>
+      <div class="err" id="loginErr" role="alert"></div>
+    </form>
+    <p class="hint" style="text-align:center">Can't find your PIN? Email <a href="mailto:timemachinebandbooking@gmail.com">timemachinebandbooking@gmail.com</a></p>
+  </section>
+
+  <!-- PORTAL -->
+  <section id="portalView" class="hidden">
+    <span class="pill" id="bandPill"></span>
+    <h1 id="title"></h1>
+    <p class="sub" id="dateLine"></p>
+
+    <div class="card">
+      <h2>Your Event</h2>
+      <div class="grid" id="details"></div>
+    </div>
+
+    <div class="card">
+      <h2>Balance &amp; Payments</h2>
+      <div class="money">
+        <div><div class="k">Total</div><div class="n" id="mTotal"></div></div>
+        <div><div class="k">Paid</div><div class="n" id="mPaid"></div></div>
+        <div class="due"><div class="k">Balance due</div><div class="n" id="mBal"></div></div>
+      </div>
+      <p class="hint" id="dueLine"></p>
+      <div id="payWrap"></div>
+      <p class="hint" style="margin-top:14px">Card payments are processed securely by Square. You can also pay by check, Zelle or Venmo. Just reply to your booking email for details.</p>
+    </div>
+
+    <div class="card">
+      <h2>Your Documents</h2>
+      <div class="files" id="files"></div>
+    </div>
+
+    <div class="card" id="songCard">
+      <h2>Song Requests</h2>
+      <p class="hint">Browse our full song list. Tap <b style="color:#7dffb0">Must Play</b> for songs you'd love to hear, or <b style="color:#ff7aa8">Do Not Play</b> for songs to skip. Pick as many as you like! We can't promise every song, but your picks help us shape the night around the music you love. Everything saves automatically.</p>
+      <div class="tally"><span class="g" id="tMust">0 Must Play</span><span class="r" id="tDnp">0 Do Not Play</span><span id="songMsg" class="hint" role="status"></span></div>
+      <input id="songSearch" type="search" placeholder="Search by song or artist…" style="margin-top:12px">
+      <div class="k" style="margin-top:12px">Genre</div><div class="songbar" id="genreBar"></div>
+      <div class="k">Decade</div><div class="songbar" id="decadeBar"></div>
+      <div class="songbar"><button type="button" class="chip" id="onlyMine">Show only my picks</button></div>
+      <div class="hint" id="songCount"></div>
+      <div class="songs" id="songList"></div>
+    </div>
+
+    <div class="card">
+      <h2>Wedding Worksheet</h2>
+      <p class="hint" id="wsStatus">Fill this in whenever you're ready. You can come back and change it any time before the wedding.</p>
+      <form id="wsForm">
+        <div class="section-t">Contacts</div>
+        <label for="WS_Couple_Names">Couple's names (as you'd like them announced)</label>
+        <input id="WS_Couple_Names" maxlength="255">
+        <label for="WS_Day_Of_Contact">Day-of contact <span class="hint">(coordinator or point person: name, phone, email)</span></label>
+        <textarea id="WS_Day_Of_Contact" maxlength="2000"></textarea>
+        <label for="WS_Groom_Parents">Parents' names <span class="hint">(for introductions)</span></label>
+        <input id="WS_Groom_Parents" maxlength="255">
+
+        <div class="section-t">Timeline &amp; Logistics</div>
+        <label for="WS_Cocktail_Hour">Will there be a cocktail hour?</label>
+        <select id="WS_Cocktail_Hour"><option value="">Choose…</option><option>Yes - same room</option><option>Yes - different room</option><option>No</option></select>
+        <label for="WS_Cocktail_Hour_Ends">What time does cocktail hour end?</label>
+        <input id="WS_Cocktail_Hour_Ends" maxlength="100">
+        <label for="WS_Cocktail_Location">Cocktail hour location <span class="hint">(if different from the reception)</span></label>
+        <input id="WS_Cocktail_Location" maxlength="255">
+        <label for="WS_Setup_Complete_By">Set-up &amp; sound check must be finished by</label>
+        <input id="WS_Setup_Complete_By" maxlength="100">
+        <label for="WS_Band_Break_Room">Where is the band's break room? <span class="hint">(per contract: hot meal provided; band eats during first break)</span></label>
+        <input id="WS_Band_Break_Room" maxlength="255">
+
+        <div class="section-t">Music</div>
+        <label>Musical styles you love</label>
+        <div class="checks" id="styles"></div>
+        <label for="WS_Do_Not_Play">Songs that aren't on our list <span class="hint">(anything else you'd like played or skipped)</span></label>
+        <input id="WS_Do_Not_Play" maxlength="255">
+
+        <div class="section-t">Introductions &amp; Toasts</div>
+        <label for="WS_Wedding_Party_Intros">Wedding party introductions <span class="hint">(list in order, or "none")</span></label>
+        <textarea id="WS_Wedding_Party_Intros" maxlength="2000"></textarea>
+        <label for="WS_Entrance_Song">Wedding party entrance song</label>
+        <input id="WS_Entrance_Song" maxlength="255">
+        <label for="WS_Other_Intros">Any other introductions</label>
+        <textarea id="WS_Other_Intros" maxlength="2000"></textarea>
+        <label for="WS_Toasts">Toasts <span class="hint">(name and relationship to the couple, in order)</span></label>
+        <textarea id="WS_Toasts" maxlength="2000"></textarea>
+
+        <div class="section-t">Special Dances</div>
+        <label for="WS_First_Dance">First dance <span class="hint">(song &amp; artist, a link to the exact version, full or shortened, live by the band or recording)</span></label>
+        <textarea id="WS_First_Dance" maxlength="2000"></textarea>
+        <label for="WS_Father_Daughter_Song">Father / daughter dance song</label>
+        <input id="WS_Father_Daughter_Song" maxlength="255">
+        <label for="WS_Mother_Son_Song">Mother / son dance song</label>
+        <input id="WS_Mother_Son_Song" maxlength="255">
+
+        <div class="section-t">Traditions</div>
+        <label for="WS_Bouquet_Toss">Bouquet toss? <span class="hint">(No, or Yes + song, e.g. "Single Ladies")</span></label>
+        <input id="WS_Bouquet_Toss" maxlength="255">
+        <label for="WS_Garter_Toss">Garter toss? <span class="hint">(No, or Yes + song)</span></label>
+        <input id="WS_Garter_Toss" maxlength="255">
+        <label for="WS_Send_Off">Send-off <span class="hint">(will guests send you off? last dance song while they line up?)</span></label>
+        <input id="WS_Send_Off" maxlength="255">
+
+        <div class="section-t">Anything Else</div>
+        <label for="WS_Notes_Requests">Notes or special requests</label>
+        <input id="WS_Notes_Requests" maxlength="255">
+
+        <div class="sticky">
+          <button class="btn" id="wsSave">Save worksheet</button>
+          <span id="wsMsg" role="status"></span>
+        </div>
+      </form>
+    </div>
+  </section>
+</main>
+
+<script>
+const API = "/api/portal";
+const STYLES = ["Big Band","Oldies","Motown/R&B","Rock & Roll","Top 40","Modern Rock","Hip Hop","Country"];
+const $ = id => document.getElementById(id);
+let token = null;
+try { token = sessionStorage.getItem("tme_portal"); } catch (e) {}
+
+const money = n => (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+const fmtDate = d => d ? new Date(d + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" }) : "";
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+$("styles").innerHTML = STYLES.map(s => `<label><input type="checkbox" value="${esc(s)}"> ${esc(s)}</label>`).join("");
+
+async function call(action, body) {
+  const r = await fetch(`${API}?action=${action}`, {
+    method: body ? "POST" : "GET",
+    headers: { "content-type": "application/json", ...(token ? { authorization: "Bearer " + token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && action !== "login") { logout(); throw new Error(j.error || "Please log in again."); }
+  if (!r.ok) throw new Error(j.error || "Something went wrong.");
+  return j;
+}
+
+function logout() {
+  token = null; try { sessionStorage.removeItem("tme_portal"); } catch (e) {}
+  $("portalView").classList.add("hidden"); $("loginView").classList.remove("hidden"); $("logout").classList.add("hidden");
+}
+$("logout").onclick = logout;
+
+$("loginForm").onsubmit = async e => {
+  e.preventDefault(); $("loginErr").textContent = ""; $("loginBtn").disabled = true;
+  try {
+    const { token: t } = await call("login", { lastName: $("ln").value, pin: $("pin").value });
+    token = t; try { sessionStorage.setItem("tme_portal", t); } catch (e) {}
+    await load();
+  } catch (err) { $("loginErr").textContent = err.message; }
+  $("loginBtn").disabled = false;
+};
+
+async function load() {
+  const d = await call("me");
+  $("bandPill").textContent = d.band ? d.band + " Band" : "Time Machine Entertainment";
+  $("title").textContent = d.title;
+  $("dateLine").textContent = fmtDate(d.date);
+  const rows = [["Date", fmtDate(d.date)], ["Venue", d.venue], ["Address", d.venueAddress], ["Performance", d.performanceTime],
+    ["Band load-in", d.loadIn], ["Band attire", d.dressCode], ["Booked by", d.contact], ["Contract", d.contractStatus]].filter(r => r[1]);
+  $("details").innerHTML = rows.map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`).join("")
+    + (d.notes ? `<div style="grid-column:1/-1"><div class="k">Notes</div><div class="v">${esc(d.notes)}</div></div>` : "");
+  $("mTotal").textContent = money(d.total); $("mPaid").textContent = money(d.paid); $("mBal").textContent = money(d.balance);
+  $("dueLine").textContent = d.balance > 0 ? `Remaining balance is due on or before ${fmtDate(d.balanceDue)}.` : "You're paid in full. Thank you!";
+  $("payWrap").innerHTML = d.balance > 0 && d.squareLink
+    ? `<a class="btn" href="${esc(d.squareLink)}" target="_blank" rel="noopener">Make a payment</a>`
+    : d.balance > 0 ? `<p class="hint">Your online payment link is on its way. Contact us to pay now.</p>` : "";
+  $("files").innerHTML = d.files.length
+    ? d.files.map(f => `<a href="${API}?action=file&id=${encodeURIComponent(f.id)}&t=${encodeURIComponent(token)}" target="_blank" rel="noopener"><span>📄 ${esc(f.name)}</span><span class="hint">Open</span></a>`).join("")
+    : `<p class="hint">Your signed contract and invoice will appear here.</p>`;
+  const w = d.worksheet || {};
+  for (const [k, v] of Object.entries(w)) {
+    if (k === "WS_Musical_Styles") { document.querySelectorAll("#styles input").forEach(c => c.checked = (v || []).includes(c.value)); continue; }
+    const el = $(k); if (el) el.value = v ?? "";
+  }
+  if (d.worksheetSubmitted) $("wsStatus").innerHTML = `Last saved ${new Date(d.worksheetSubmitted).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}. You can keep updating it any time before the wedding.`;
+  loadSongs(d.songs).catch(() => { $("songList").innerHTML = '<p class="hint" style="padding:12px">Song list could not load. Please refresh.</p>'; });
+  $("loginView").classList.add("hidden"); $("portalView").classList.remove("hidden"); $("logout").classList.remove("hidden");
+}
+
+$("wsForm").onsubmit = async e => {
+  e.preventDefault(); $("wsSave").disabled = true; $("wsMsg").textContent = "Saving…"; $("wsMsg").className = "hint";
+  const data = {};
+  document.querySelectorAll("#wsForm input[id], #wsForm textarea, #wsForm select").forEach(el => data[el.id] = el.value.trim());
+  data.WS_Musical_Styles = [...document.querySelectorAll("#styles input:checked")].map(c => c.value);
+  try { await call("worksheet", data); $("wsMsg").textContent = "Saved! We'll have this for your big day."; $("wsMsg").className = "ok"; }
+  catch (err) { $("wsMsg").textContent = err.message; $("wsMsg").className = "err"; }
+  $("wsSave").disabled = false;
+};
+
+// ---------- Song requests ----------
+const GENRES = {P:"Pop",R:"Rock",A:"Alternative",C:"Country",S:"R&B / Soul",F:"Funk & Disco",H:"Hip Hop",D:"Dance",L:"Latin",J:"Standards",X:"Holiday"};
+const decadeOf = y => y >= 30 && y <= 50 ? "50s & earlier" : y === 0 ? "2000s" : y === 10 ? "2010s" : y === 20 ? "2020s" : y + "s";
+const DECADES = ["50s & earlier","60s","70s","80s","90s","2000s","2010s","2020s"];
+let SONGS = [], picks = { must: new Set(), dnp: new Set() }, fGenre = null, fDecade = null, onlyMine = false, saveTimer = null;
+const keyOf = s => `${s[1]} - ${s[0]}`;
+function chips(el, list, get, set) {
+  el.innerHTML = list.map(x => `<button type="button" class="chip" data-v="${esc(x)}">${esc(x)}</button>`).join("");
+  el.onclick = e => { const b = e.target.closest(".chip"); if (!b) return; set(get() === b.dataset.v ? null : b.dataset.v); el.querySelectorAll(".chip").forEach(c => c.classList.toggle("on", c.dataset.v === get())); renderSongs(); };
+}
+function renderSongs() {
+  const q = $("songSearch").value.trim().toLowerCase();
+  const rows = SONGS.filter(s => (!fGenre || GENRES[s[2]] === fGenre) && (!fDecade || decadeOf(s[3]) === fDecade)
+    && (!q || (s[0] + " " + s[1]).toLowerCase().includes(q)) && (!onlyMine || picks.must.has(keyOf(s)) || picks.dnp.has(keyOf(s))));
+  $("songCount").textContent = `${rows.length} song${rows.length === 1 ? "" : "s"}`;
+  $("songList").innerHTML = rows.slice(0, 600).map(s => { const k = keyOf(s);
+    return `<div class="song"><div class="t"><b>${esc(s[1])}</b><span>${esc(s[0])}</span></div><div class="meta">${GENRES[s[2]]} · ${decadeOf(s[3])}</div>
+    <button type="button" class="pick must ${picks.must.has(k) ? "on" : ""}" data-k="${esc(k)}" data-t="must">Must Play</button>
+    <button type="button" class="pick dnp ${picks.dnp.has(k) ? "on" : ""}" data-k="${esc(k)}" data-t="dnp">Do Not Play</button></div>`; }).join("")
+    || `<p class="hint" style="padding:12px">No songs match. Try another filter.</p>`;
+  $("tMust").textContent = `${picks.must.size} Must Play`; $("tDnp").textContent = `${picks.dnp.size} Do Not Play`;
+}
+$("songList").onclick = e => {
+  const b = e.target.closest(".pick"); if (!b) return;
+  const k = b.dataset.k, t = b.dataset.t, other = t === "must" ? "dnp" : "must";
+  if (picks[t].has(k)) picks[t].delete(k); else { picks[t].add(k); picks[other].delete(k); }
+  renderSongs(); $("songMsg").textContent = "Saving…";
+  clearTimeout(saveTimer); saveTimer = setTimeout(saveSongs, 900);
+};
+async function saveSongs() {
+  try { await call("songs", { must: [...picks.must], dnp: [...picks.dnp] }); $("songMsg").textContent = "Saved ✓"; }
+  catch (err) { $("songMsg").textContent = err.message; }
+}
+$("songSearch").oninput = renderSongs;
+$("onlyMine").onclick = () => { onlyMine = !onlyMine; $("onlyMine").classList.toggle("on", onlyMine); renderSongs(); };
+chips($("genreBar"), Object.values(GENRES), () => fGenre, v => fGenre = v);
+chips($("decadeBar"), DECADES, () => fDecade, v => fDecade = v);
+async function loadSongs(saved) {
+  if (!SONGS.length) SONGS = await fetch("/portal/songs.json").then(r => r.json()).then(a => a.sort((x, y) => x[1].localeCompare(y[1])));
+  picks = { must: new Set(saved?.must || []), dnp: new Set(saved?.dnp || []) };
+  renderSongs();
+}
+
+if (token) load().catch(() => logout());
+</script>
+</body>
+</html>
