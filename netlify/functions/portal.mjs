@@ -41,7 +41,9 @@ async function zohoToken() {
     grant_type: "refresh_token",
   });
   const r = await fetch(`${ACCOUNTS}/oauth/v2/token`, { method: "POST", body });
-  const j = await r.json();
+  const txt = await r.text();
+  let j = {};
+  try { j = JSON.parse(txt); } catch { console.error("Zoho token endpoint returned non-JSON", r.status, txt.slice(0, 120)); }
   if (!j.access_token) {
     const v = (k) => { const x = process.env[k] || ""; return `${k}: ${x.length} chars${/^\s|\s$|"/.test(x) ? " (has spaces or quotes!)" : ""}`; };
     console.error("Zoho token refresh failed:", j.error || r.status, "|", ["ZOHO_CLIENT_ID", "ZOHO_CLIENT_SECRET", "ZOHO_REFRESH_TOKEN"].map(v).join(", "), "| accounts:", ACCOUNTS);
@@ -56,6 +58,9 @@ async function zoho(path, opts = {}) {
     ...opts,
     headers: { Authorization: `Zoho-oauthtoken ${await zohoToken()}`, ...(opts.headers || {}) },
   });
+  if (!(r.headers.get("content-type") || "").includes("json") && r.status !== 204) {
+    console.error("Zoho API non-JSON reply", r.status, path.split("?")[0], (await r.clone().text()).slice(0, 120));
+  }
   return r;
 }
 
