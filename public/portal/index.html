@@ -147,8 +147,10 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-c
         <details class="ws-sec" data-sec="1">
           <summary><span class="ws-num">1</span><span class="ws-t"><b>👥 Contacts &amp; Family</b><small>Who's who on the big day</small></span><span class="ws-done" aria-hidden="true">✓</span></summary>
           <div class="ws-body">
-          <label for="WS_Couple_Names">Couple's names <span class="hint">as you'd like them announced</span></label>
-          <input id="WS_Couple_Names" maxlength="255">
+          <label for="WS_Bride_Name">Bride's name</label>
+          <input id="WS_Bride_Name" maxlength="255">
+          <label for="WS_Groom_Name">Groom's name</label>
+          <input id="WS_Groom_Name" maxlength="255">
           <label for="WS_Day_Of_Contact">Day-of contact <span class="hint">coordinator or point person: name, phone, email</span></label>
           <textarea id="WS_Day_Of_Contact" maxlength="2000"></textarea>
           <label for="WS_Groom_Parents">Parents' names <span class="hint">for introductions</span></label>
@@ -183,6 +185,8 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-c
         <details class="ws-sec" data-sec="4">
           <summary><span class="ws-num">4</span><span class="ws-t"><b>🎤 Introductions &amp; Toasts</b><small>Grand entrance and speeches</small></span><span class="ws-done" aria-hidden="true">✓</span></summary>
           <div class="ws-body">
+          <label for="WS_Announce_As">How would you like to be announced? <span class="hint">e.g. "For the first time, Mr. &amp; Mrs. Smith!"</span></label>
+          <input id="WS_Announce_As" maxlength="255">
           <label for="WS_Wedding_Party_Intros">Wedding party introductions <span class="hint">list in order, or "none"</span></label>
           <textarea id="WS_Wedding_Party_Intros" maxlength="2000"></textarea>
           <label for="WS_Entrance_Song">Wedding party entrance song</label>
