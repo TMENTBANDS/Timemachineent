@@ -128,18 +128,6 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-c
       <div class="files" id="files"></div>
     </div>
 
-    <div class="card" id="songCard">
-      <h2>Song Requests</h2>
-      <p class="hint">Browse our full song list. Tap <b style="color:#7dffb0">Must Play</b> for songs you'd love to hear, or <b style="color:#ff7aa8">Do Not Play</b> for songs to skip. Pick as many as you like! We can't promise every song, but your picks help us shape the night around the music you love. Everything saves automatically.</p>
-      <div class="tally"><span class="g" id="tMust">0 Must Play</span><span class="r" id="tDnp">0 Do Not Play</span><span id="songMsg" class="hint" role="status"></span></div>
-      <input id="songSearch" type="search" placeholder="Search by song or artist…" style="margin-top:12px">
-      <div class="k" style="margin-top:12px">Genre</div><div class="songbar" id="genreBar"></div>
-      <div class="k">Decade</div><div class="songbar" id="decadeBar"></div>
-      <div class="songbar"><button type="button" class="chip" id="onlyMine">Show only my picks</button></div>
-      <div class="hint" id="songCount"></div>
-      <div class="songs" id="songList"></div>
-    </div>
-
     <div class="card">
       <h2>Wedding Worksheet</h2>
       <p class="hint" id="wsStatus">Fill this in whenever you're ready. You can come back and change it any time before the wedding.</p>
@@ -177,7 +165,17 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-c
           <div class="ws-body">
           <label>Musical styles you love</label>
           <div class="checks" id="styles"></div>
-          <p class="hint" style="margin:14px 0 0">👆 Pick specific songs in <a href="#songCard">Song Requests</a> above.</p>
+          <div id="songCard" class="song-in-ws">
+          <label style="margin-top:22px">Song requests</label>
+          <p class="hint">Browse our full song list. Tap <b style="color:#7dffb0">Must Play</b> for songs you'd love to hear, or <b style="color:#ff7aa8">Do Not Play</b> for songs to skip. Pick as many as you like! We can't promise every song, but your picks help us shape the night around the music you love. Everything saves automatically.</p>
+      <div class="tally"><span class="g" id="tMust">0 Must Play</span><span class="r" id="tDnp">0 Do Not Play</span><span id="songMsg" class="hint" role="status"></span></div>
+      <input id="songSearch" type="search" placeholder="Search by song or artist…" style="margin-top:12px">
+      <div class="k" style="margin-top:12px">Genre</div><div class="songbar" id="genreBar"></div>
+      <div class="k">Decade</div><div class="songbar" id="decadeBar"></div>
+      <div class="songbar"><button type="button" class="chip" id="onlyMine">Show only my picks</button></div>
+      <div class="hint" id="songCount"></div>
+      <div class="songs" id="songList"></div>
+          </div>
           <label for="WS_Do_Not_Play">Songs that aren't on our list <span class="hint">anything else you'd like played or skipped</span></label>
           <input id="WS_Do_Not_Play" maxlength="255">
           </div>
@@ -320,7 +318,7 @@ async function load() {
 $("wsForm").onsubmit = async e => {
   e.preventDefault(); $("wsSave").disabled = true; $("wsMsg").textContent = "Saving…"; $("wsMsg").className = "hint";
   const data = {};
-  document.querySelectorAll("#wsForm input[id], #wsForm textarea, #wsForm select").forEach(el => data[el.id] = el.value.trim());
+  document.querySelectorAll("#wsForm input[id]:not(#songSearch), #wsForm textarea, #wsForm select").forEach(el => data[el.id] = el.value.trim());
   data.WS_Musical_Styles = [...document.querySelectorAll("#styles input:checked")].map(c => c.value);
   try { await call("worksheet", data); $("wsMsg").textContent = "Saved! We'll have this for your big day."; $("wsMsg").className = "ok"; }
   catch (err) { $("wsMsg").textContent = err.message; $("wsMsg").className = "err"; }
@@ -332,7 +330,7 @@ function wsProgress() {
   const secs = [...document.querySelectorAll(".ws-sec")];
   let n = 0;
   secs.forEach(sec => {
-    const any = [...sec.querySelectorAll("input:not([type=checkbox]),textarea,select")].some(el => el.value.trim()) || sec.querySelector("#styles input:checked");
+    const any = [...sec.querySelectorAll("input:not([type=checkbox]):not(#songSearch),textarea,select")].some(el => el.value.trim()) || sec.querySelector("#styles input:checked") || (sec.contains($("songList")) && (picks.must.size + picks.dnp.size) > 0);
     sec.classList.toggle("filled", !!any); if (any) n++;
   });
   $("wsProg").textContent = `${n} of ${secs.length} sections started`;
@@ -366,7 +364,7 @@ $("songList").onclick = e => {
   const b = e.target.closest(".pick"); if (!b) return;
   const k = b.dataset.k, t = b.dataset.t, other = t === "must" ? "dnp" : "must";
   if (picks[t].has(k)) picks[t].delete(k); else { picks[t].add(k); picks[other].delete(k); }
-  renderSongs(); $("songMsg").textContent = "Saving…";
+  renderSongs(); wsProgress(); $("songMsg").textContent = "Saving…";
   clearTimeout(saveTimer); saveTimer = setTimeout(saveSongs, 900);
 };
 async function saveSongs() {
@@ -374,13 +372,14 @@ async function saveSongs() {
   catch (err) { $("songMsg").textContent = err.message; }
 }
 $("songSearch").oninput = renderSongs;
+$("songSearch").onkeydown = e => { if (e.key === "Enter") e.preventDefault(); };
 $("onlyMine").onclick = () => { onlyMine = !onlyMine; $("onlyMine").classList.toggle("on", onlyMine); renderSongs(); };
 chips($("genreBar"), Object.values(GENRES), () => fGenre, v => fGenre = v);
 chips($("decadeBar"), DECADES, () => fDecade, v => fDecade = v);
 async function loadSongs(saved) {
   if (!SONGS.length) SONGS = await fetch("/portal/songs.json").then(r => r.json()).then(a => a.sort((x, y) => x[1].localeCompare(y[1])));
   picks = { must: new Set(saved?.must || []), dnp: new Set(saved?.dnp || []) };
-  renderSongs();
+  renderSongs(); wsProgress();
 }
 
 if (token) load().catch(() => logout());
