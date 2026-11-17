@@ -31,11 +31,17 @@ const DEAL_FIELDS = [
 
 // ---------- Zoho helpers ----------
 const clean = (x = "") => x.trim().replace(/^"+|"+$/g, "").trim();
+// Accept either the bare refresh token or the whole JSON reply Zoho shows ({"access_token":..., "refresh_token":"1000...."}).
+function refreshToken() {
+  const raw = process.env.ZOHO_REFRESH_TOKEN || "";
+  const m = raw.match(/"refresh_token"\s*:\s*"([^"]+)"/);
+  return m ? m[1] : clean(raw);
+}
 let cachedToken = null, tokenExpires = 0;
 async function zohoToken() {
   if (cachedToken && Date.now() < tokenExpires) return cachedToken;
   const body = new URLSearchParams({
-    refresh_token: clean(process.env.ZOHO_REFRESH_TOKEN),
+    refresh_token: refreshToken(),
     client_id: clean(process.env.ZOHO_CLIENT_ID),
     client_secret: clean(process.env.ZOHO_CLIENT_SECRET),
     grant_type: "refresh_token",
