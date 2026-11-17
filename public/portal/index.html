@@ -188,6 +188,14 @@ input:focus,textarea:focus,select:focus{outline:2px solid var(--violet);border-c
         <label for="WS_Notes_Requests">Notes or special requests</label>
         <input id="WS_Notes_Requests" maxlength="255">
 
+        <div class="section-t">Private Last Dance</div>
+        <label for="WS_Private_Last_Dance">Will you be doing a private last dance? <span class="hint">(just the two of you at the end of the night)</span></label>
+        <select id="WS_Private_Last_Dance"><option value="">Choose…</option><option>Yes</option><option>No</option><option>Not sure yet</option></select>
+        <label for="WS_Private_Dance_Song">If yes, what song? <span class="hint">(song &amp; artist, live by the band or recording)</span></label>
+        <input id="WS_Private_Dance_Song" maxlength="255">
+        <label for="WS_Private_Dance_Notes">Anything else we should know about it?</label>
+        <input id="WS_Private_Dance_Notes" maxlength="255">
+
         <div class="sticky">
           <button class="btn" id="wsSave">Save worksheet</button>
           <span id="wsMsg" role="status"></span>

@@ -24,6 +24,7 @@ const WS_FIELDS = [
   "WS_Musical_Styles", "WS_Wedding_Party_Intros", "WS_Other_Intros", "WS_Toasts",
   "WS_First_Dance", "WS_Entrance_Song", "WS_Father_Daughter_Song", "WS_Mother_Son_Song",
   "WS_Bouquet_Toss", "WS_Garter_Toss", "WS_Send_Off", "WS_Do_Not_Play", "WS_Notes_Requests",
+  "WS_Private_Last_Dance", "WS_Private_Dance_Song", "WS_Private_Dance_Notes",
 ];
 const DEAL_FIELDS = [
   "Deal_Name", "Event_Date", "Band", "Venue", "Venue_Address", "Performance_Time",
