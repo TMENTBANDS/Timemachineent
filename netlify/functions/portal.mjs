@@ -206,7 +206,11 @@ export default async (req, context) => {
       const r = await zoho(`/Deals/${deal}?fields=Portal_Upload_Code`);
       const want = r.status === 200 ? (await r.json()).data?.[0]?.Portal_Upload_Code : null;
       if (!want || want.length !== code.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(code))) return bad(403, "Code not valid");
-      const body = await req.arrayBuffer();
+      let body;
+      if ((req.headers.get("content-type") || "").includes("multipart/form-data")) {
+        const f = (await req.formData()).get("file");
+        body = f && typeof f.arrayBuffer === "function" ? await f.arrayBuffer() : new ArrayBuffer(0);
+      } else body = await req.arrayBuffer();
       if (!body.byteLength || body.byteLength > 15e6) return bad(400, "File missing or too large");
       await docs().set(`${deal}/${name}`, body);
       await zoho("/Deals", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: [{ id: deal, Portal_Upload_Code: null }] }) });
