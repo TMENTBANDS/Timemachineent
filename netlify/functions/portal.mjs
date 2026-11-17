@@ -8,6 +8,9 @@
 //   PORTAL_SECRET       any long random string (signs login sessions)
 
 import crypto from "node:crypto";
+import { getStore } from "@netlify/blobs";
+
+const docs = () => getStore("portal-docs");
 
 const ACCOUNTS = process.env.ZOHO_ACCOUNTS_URL || "https://accounts.zoho.com";
 const API = (process.env.ZOHO_API_URL || "https://www.zohoapis.com") + "/crm/v8";
@@ -127,6 +130,10 @@ function songNoteText({ must, dnp }) {
 async function publicView(deal) {
   const att = await zoho(`/Deals/${deal.id}/Attachments?fields=id,File_Name,Size,Created_Time`);
   const files = att.status === 200 ? ((await att.json()).data || []) : [];
+  try {
+    const { blobs } = await docs().list({ prefix: `${deal.id}/` });
+    for (const b of blobs) files.push({ id: "b:" + b.key, File_Name: b.key.split("/").slice(1).join("/") });
+  } catch (e) { console.error("blob list failed", e); }
   const total = Number(deal.Amount || 0);
   const paid = Number(deal.TAC_Paid || 0);
   const out = {
@@ -187,6 +194,25 @@ export default async (req, context) => {
       return json(200, { token: sign(match.id) });
     }
 
+    // ---- ADMIN UPLOAD: copy a document into a couple's portal ----
+    // Authorized by a one-time code Shonna (or Claude) puts in the Deal's "Portal Upload Code" field; the code is cleared after use.
+    if (action === "upload") {
+      const cors = { "access-control-allow-origin": req.headers.get("origin") || "*", "access-control-allow-methods": "POST, OPTIONS", "access-control-allow-headers": "content-type" };
+      if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+      const deal = url.searchParams.get("deal") || "", code = url.searchParams.get("code") || "";
+      const name = (url.searchParams.get("name") || "Document.pdf").replace(/[^\w .&()#-]/g, "").slice(0, 120) || "Document.pdf";
+      const bad = (st, m) => new Response(JSON.stringify({ error: m }), { status: st, headers: { ...cors, "content-type": "application/json" } });
+      if (!/^\d+$/.test(deal) || code.length < 20) return bad(400, "Missing deal or code");
+      const r = await zoho(`/Deals/${deal}?fields=Portal_Upload_Code`);
+      const want = r.status === 200 ? (await r.json()).data?.[0]?.Portal_Upload_Code : null;
+      if (!want || want.length !== code.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(code))) return bad(403, "Code not valid");
+      const body = await req.arrayBuffer();
+      if (!body.byteLength || body.byteLength > 15e6) return bad(400, "File missing or too large");
+      await docs().set(`${deal}/${name}`, body);
+      await zoho("/Deals", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ data: [{ id: deal, Portal_Upload_Code: null }] }) });
+      return new Response(JSON.stringify({ ok: true, name, bytes: body.byteLength }), { headers: { ...cors, "content-type": "application/json" } });
+    }
+
     // Everything below needs a valid session
     const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "") || url.searchParams.get("t");
     const dealId = verify(token);
@@ -204,6 +230,11 @@ export default async (req, context) => {
       const view = await publicView(deal);
       const f = view.files.find(x => x.id === fileId);
       if (!f) return json(404, { error: "File not found" });
+      if (fileId.startsWith("b:")) {
+        const data = await docs().get(fileId.slice(2), { type: "arrayBuffer" });
+        if (!data) return json(404, { error: "File not found" });
+        return new Response(data, { headers: { "content-type": "application/pdf", "content-disposition": `inline; filename="${f.name.replace(/"/g, "")}"`, "cache-control": "no-store" } });
+      }
       const r = await zoho(`/Deals/${dealId}/Attachments/${fileId}`);
       return new Response(r.body, {
         headers: {
